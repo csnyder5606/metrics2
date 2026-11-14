@@ -300,6 +300,23 @@
   .score.warn .s-value { color: var(--gold); }
   .score.over .s-value { color: var(--rust); }
   .score.over .bar > span { background: var(--rust); }
+  .check-field {
+    display: flex; align-items: center; gap: 0.55rem;
+    font-size: 0.85rem; color: var(--ink-dim);
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 7px;
+    padding: 0.55rem 0.65rem; cursor: pointer;
+  }
+  input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--gold); margin: 0; cursor: pointer; }
+  .ampm-row {
+    grid-column: 1 / -1;
+    display: grid; grid-template-columns: 1fr 3rem 3rem; align-items: center; justify-items: center;
+    font-size: 0.85rem; color: var(--ink-dim);
+    padding: 0.35rem 0; border-bottom: 1px solid var(--line);
+  }
+  .ampm-row > span:first-child { justify-self: start; }
+  .ampm-head { font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.1em; color: var(--ink-faint); padding-bottom: 0.15rem; }
+  .flag-list { font-size: 0.78rem; line-height: 1.7; margin-top: 0.3rem; }
+  .flag-list b { color: var(--ink); }
   td.note-cell { text-align: left; white-space: normal; min-width: 14rem; color: var(--ink-dim); font-family: var(--sans); }
 </style>
 </head>
@@ -372,38 +389,43 @@
   const TARGETS = { careerHours: 21, hoursDashed: 21, drinkDaysMax: 2 };
 
   // type: num | bool | text.  agg: sum | avg | last (for 14-day trends).  trend: show sparkline card
+  // type: num | check | ampm | text.  agg: sum | avg | last (14-day trends).  trend: show sparkline card
   const FIELDS = [
     { section: 'Career search' },
-    { key: 'careerHours',   label: 'Career search', unit: 'hrs',   type: 'num', step: 0.25, agg: 'sum', trend: true, color: '#c9973f', col: 'Career' },
-    { key: 'outreachSent',  label: 'Outreach sent', unit: 'count', type: 'num', step: 1, agg: 'sum', trend: true, color: '#4c8577', col: 'Outreach' },
-    { key: 'followUps',     label: 'Follow-ups',    unit: 'count', type: 'num', step: 1, agg: 'sum', col: 'F/U' },
-    { key: 'appsSent',      label: 'Job apps sent', unit: 'count', type: 'num', step: 1, agg: 'sum', trend: true, color: '#a85c48', col: 'Apps' },
+    { key: 'careerHours',   label: 'Career search', unit: 'hrs', type: 'num', step: 0.25, agg: 'sum', trend: true, color: '#c9973f', col: 'Career' },
 
     { section: 'DoorDash' },
-    { key: 'hoursDashed',   label: 'Hours dashed',  unit: 'hrs', type: 'num', step: 0.25, agg: 'sum', trend: true, color: '#c9973f', col: 'Dashed' },
-    { key: 'dashEarnings',  label: 'Dash earnings', unit: '$',   type: 'num', step: 0.01, agg: 'sum', trend: true, color: '#4c8577', col: 'Dash $' },
+    { key: 'hoursDashed',   label: 'Hours dashed',  unit: 'hrs', type: 'num', step: 0.25, agg: 'sum', trend: true, color: '#4c8577', col: 'Dashed' },
 
     { section: 'Drinking / smoking' },
-    { key: 'drankSmoked',   label: 'Drank or smoked today', type: 'bool', agg: 'sum', trend: true, color: '#a85c48', col: 'Drank' },
-    { key: 'toCope',        label: 'To cope / numb?',       type: 'bool', agg: 'sum', col: 'Cope' },
-    { key: 'urgeResisted',  label: 'Urges resisted',  unit: 'count', type: 'num', step: 1, agg: 'sum', col: 'Urges' },
+    { key: 'drankSmoked',   label: 'Drank or smoked today', type: 'check', agg: 'sum', trend: true, color: '#a85c48', col: 'Drank' },
+    { key: 'toCope',        label: 'To cope / numb',        type: 'check', agg: 'sum', col: 'Cope' },
+    { key: 'urgeResisted',  label: 'Urges resisted', unit: 'count', type: 'num', step: 1, agg: 'sum', col: 'Urges' },
 
     { section: 'Mood journal' },
-    { key: 'moodAM',        label: 'Mood AM',       unit: '1–10', type: 'num', step: 1, min: 1, max: 10, agg: 'avg', trend: true, color: '#c9973f', col: 'Mood AM' },
-    { key: 'moodPM',        label: 'Mood PM',       unit: '1–10', type: 'num', step: 1, min: 1, max: 10, agg: 'avg', trend: true, color: '#4c8577', col: 'Mood PM' },
+    { key: 'moodAM',        label: 'Mood AM', unit: '1–10', type: 'num', step: 1, min: 1, max: 10, agg: 'avg', trend: true, color: '#c9973f', col: 'Mood AM' },
+    { key: 'moodPM',        label: 'Mood PM', unit: '1–10', type: 'num', step: 1, min: 1, max: 10, agg: 'avg', trend: true, color: '#4c8577', col: 'Mood PM' },
     { key: 'irritability',  label: 'Irritability / anxiety', unit: '1–10', type: 'num', step: 1, min: 1, max: 10, agg: 'avg', trend: true, color: '#a85c48', col: 'Irrit' },
-    { key: 'sleepHours',    label: 'Sleep',         unit: 'hrs', type: 'num', step: 0.25, agg: 'avg', trend: true, color: '#4c8577', col: 'Sleep' },
-    { key: 'kidsDay',       label: 'Kids with me',  type: 'bool', agg: 'sum', col: 'Kids' },
+    { key: 'sleepHours',    label: 'Sleep', unit: 'hrs', type: 'num', step: 0.25, agg: 'avg', trend: true, color: '#4c8577', col: 'Sleep' },
+    { ampmHeader: true },
+    { key: 'cravingConnection', label: 'Craving connection', type: 'ampm', col: 'Connect' },
+    { key: 'depression',        label: 'Depression',         type: 'ampm', col: 'Depress' },
+    { key: 'cortisol',          label: 'Cortisol feelings',  type: 'ampm', col: 'Cortisol' },
+    { key: 'moodEating',        label: 'Mood-related eating', type: 'ampm', col: 'Eating' },
+    { key: 'drankPrevDay',  label: 'Drank / smoked previous day', type: 'check', agg: 'sum', col: 'Prev drank' },
+    { key: 'kidsDay',       label: 'Kids with me', type: 'check', agg: 'sum', col: 'Kids' },
     { key: 'note',          label: 'What happened (one line)', type: 'text', full: true, col: 'Note' },
 
-    { section: 'Body & other' },
-    { key: 'weightCliff',   label: "Cliff's weight",  unit: 'lbs', type: 'num', step: 0.1, agg: 'last', trend: true, color: '#c9973f', col: 'Cliff' },
-    { key: 'weightBailey',  label: "Bailey's weight", unit: 'lbs', type: 'num', step: 0.1, agg: 'last', col: 'Bailey' },
-    { key: 'walks',         label: 'Walks',           unit: 'count', type: 'num', step: 1, agg: 'avg', trend: true, color: '#4c8577', col: 'Walks' },
-    { key: 'hobbyIncomeTasks', label: 'Hobby income tasks', unit: 'count', type: 'num', step: 1, agg: 'sum', col: 'Hobby' },
-    { key: 'consultingTasks',  label: 'Consulting tasks',   unit: 'count', type: 'num', step: 1, agg: 'sum', col: 'Consult' },
+    { section: 'Body' },
+    { key: 'weightCliff',   label: 'Weight', unit: 'lbs', type: 'num', step: 0.1, agg: 'last', trend: true, color: '#c9973f', col: 'Weight' },
+    { key: 'walks',         label: 'Walks',  unit: 'count', type: 'num', step: 1, agg: 'avg', col: 'Walks' },
   ];
-  const METRICS = FIELDS.filter(f => f.key);
+  // Stored keys: each AM/PM item becomes two checkbox keys, e.g. depressionAM / depressionPM
+  const METRICS = FIELDS.filter(f => f.key).flatMap(f => f.type === 'ampm'
+    ? [{ key: f.key + 'AM', type: 'check', parent: f.key }, { key: f.key + 'PM', type: 'check', parent: f.key }]
+    : [f]);
+  const KNOWN_KEYS = new Set(METRICS.map(m => m.key));
+  const AMPM_ITEMS = FIELDS.filter(f => f.type === 'ampm');
   const WINDOW_DAYS = 14;
 
   const $ = (id) => document.getElementById(id);
@@ -445,12 +467,21 @@
     let html = `<div class="field full"><label for="f-date">Date</label><input type="date" id="f-date"></div>`;
     FIELDS.forEach(f => {
       if (f.section) { html += `<div class="section-label">${f.section}</div>`; return; }
+      if (f.ampmHeader) { html += `<div class="ampm-row ampm-head"><span></span><span>AM</span><span>PM</span></div>`; return; }
+      if (f.type === 'ampm') {
+        html += `<div class="ampm-row"><span>${f.label}</span>
+          <input type="checkbox" id="f-${f.key}AM" aria-label="${f.label} AM">
+          <input type="checkbox" id="f-${f.key}PM" aria-label="${f.label} PM"></div>`;
+        return;
+      }
+      if (f.type === 'check') {
+        html += `<label class="check-field"><input type="checkbox" id="f-${f.key}"><span>${f.label}</span></label>`;
+        return;
+      }
       const unit = f.unit ? ` <span class="unit">${f.unit}</span>` : '';
       const cls = f.full ? 'field full' : 'field';
       let input;
-      if (f.type === 'bool') {
-        input = `<select id="f-${f.key}"><option value="">—</option><option value="0">No</option><option value="1">Yes</option></select>`;
-      } else if (f.type === 'text') {
+      if (f.type === 'text') {
         input = `<textarea id="f-${f.key}" placeholder="Trigger, win, what helped…"></textarea>`;
       } else {
         const mm = (f.min !== undefined ? ` min="${f.min}"` : '') + (f.max !== undefined ? ` max="${f.max}"` : '');
@@ -465,13 +496,15 @@
     const e = entries[dateStr] || {};
     METRICS.forEach(m => {
       const v = e[m.key];
-      $('f-' + m.key).value = (v === undefined || v === null) ? '' : v;
+      if (m.type === 'check') $('f-' + m.key).checked = Number(v) === 1;
+      else $('f-' + m.key).value = (v === undefined || v === null) ? '' : v;
     });
   }
 
   function readForm() {
     const record = {};
     METRICS.forEach(m => {
+      if (m.type === 'check') { if ($('f-' + m.key).checked) record[m.key] = 1; return; }
       const raw = $('f-' + m.key).value;
       if (m.type === 'text') { if (raw.trim() !== '') record[m.key] = raw.trim(); }
       else if (raw !== '') {
@@ -487,7 +520,10 @@
 
   function saveCurrentEntry() {
     const dateStr = $('f-date').value || todayStr();
-    const record = readForm();
+    // keep any retired fields (e.g. old Bailey/consulting data) already stored for this date
+    const kept = {};
+    Object.entries(entries[dateStr] || {}).forEach(([k, v]) => { if (!KNOWN_KEYS.has(k)) kept[k] = v; });
+    const record = Object.assign(kept, readForm());
     if (Object.keys(record).length === 0) delete entries[dateStr];
     else entries[dateStr] = record;
     saveEntries(entries);
@@ -566,15 +602,6 @@
       <div class="s-sub">${copeDays} to cope · ${sumOf(dates,'urgeResisted')} urges resisted</div>
       <div class="bar"><span style="width:${Math.min(100, drinkDays / TARGETS.drinkDaysMax * 100)}%"></span></div></div>`;
 
-    const earn = sumOf(dates, 'dashEarnings');
-    // $/hr only from days where both earnings and hours were logged
-    const paired = dates.filter(d => entries[d] && isNum(entries[d].dashEarnings) && isNum(entries[d].hoursDashed) && Number(entries[d].hoursDashed) > 0);
-    const pEarn = sumOf(paired, 'dashEarnings'), pHrs = sumOf(paired, 'hoursDashed');
-    const earnCard = `<div class="score">
-      <div class="s-label">Dash earnings</div>
-      <div class="s-value">$${earn.toFixed(0)}</div>
-      <div class="s-sub">${pHrs > 0 ? '$' + (pEarn / pHrs).toFixed(2) + '/hr' : '— /hr'}</div></div>`;
-
     const mAM = avgOf(elapsed, 'moodAM'), mPM = avgOf(elapsed, 'moodPM');
     const moods = [mAM, mPM].filter(v => v !== null);
     const moodAvg = moods.length ? moods.reduce((a,b)=>a+b,0) / moods.length : null;
@@ -584,20 +611,21 @@
       <div class="s-sub">AM ${mAM === null ? '—' : r1(mAM)} · PM ${mPM === null ? '—' : r1(mPM)}</div></div>`;
 
     const sleep = avgOf(elapsed, 'sleepHours');
-    const outreach = sumOf(dates, 'outreachSent'), fu = sumOf(dates, 'followUps'), apps = sumOf(dates, 'appsSent');
-    const pipeCard = `<div class="score">
-      <div class="s-label">Job search output</div>
-      <div class="s-value">${outreach} <small>outreach</small></div>
-      <div class="s-sub">${fu} follow-ups · ${apps} apps</div></div>`;
+    const irr = avgOf(elapsed, 'irritability');
     const sleepCard = `<div class="score">
       <div class="s-label">Avg sleep</div>
       <div class="s-value">${sleep === null ? '—' : r1(sleep)} <small>hrs</small></div>
-      <div class="s-sub">irritability ${avgOf(elapsed,'irritability') === null ? '—' : r1(avgOf(elapsed,'irritability'))}</div></div>`;
+      <div class="s-sub">irritability ${irr === null ? '—' : r1(irr)}</div></div>`;
+
+    const flagDays = (k) => dates.filter(d => entries[d] && (entries[d][k + 'AM'] === 1 || entries[d][k + 'PM'] === 1)).length;
+    const flagsCard = `<div class="score">
+      <div class="s-label">Mood flags (days)</div>
+      <div class="s-sub flag-list">${AMPM_ITEMS.map(f => `${f.col} <b>${flagDays(f.key)}</b>`).join(' · ')}</div></div>`;
 
     $('scoreGrid').innerHTML =
       hoursCard('Career search', 'careerHours', TARGETS.careerHours) +
       hoursCard('DoorDash', 'hoursDashed', TARGETS.hoursDashed) +
-      drinkCard + earnCard + moodCard + sleepCard + pipeCard;
+      drinkCard + moodCard + sleepCard + flagsCard;
   }
 
   function lastNDates(n) {
@@ -659,7 +687,7 @@
       else if (m.agg === 'sum') headline = numeric.reduce((a,b) => a+b, 0);
       else if (m.agg === 'avg') headline = numeric.reduce((a,b) => a+b, 0) / numeric.length;
       else headline = numeric[numeric.length - 1];
-      const subLabel = m.type === 'bool' ? `days in last ${WINDOW_DAYS}`
+      const subLabel = m.type === 'check' ? `days in last ${WINDOW_DAYS}`
                       : m.agg === 'sum' ? `${WINDOW_DAYS}-day total`
                       : m.agg === 'avg' ? `${WINDOW_DAYS}-day avg` : 'most recent';
       const div = document.createElement('div');
@@ -674,20 +702,25 @@
   }
 
   function renderLedger() {
-    $('ledgerHead').innerHTML = '<th>Date</th>' + METRICS.map(m => `<th>${m.col}</th>`).join('') + '<th></th>';
+    const COLS = FIELDS.filter(f => f.key);
+    $('ledgerHead').innerHTML = '<th>Date</th>' + COLS.map(f => `<th>${f.col}</th>`).join('') + '<th></th>';
     const body = $('ledgerBody');
     body.innerHTML = '';
     const dates = sortedDates().reverse();
     $('emptyState').style.display = dates.length === 0 ? 'block' : 'none';
+    const dash = '<td class="empty-cell">–</td>';
     dates.forEach(dateStr => {
       const e = entries[dateStr];
       const tr = document.createElement('tr');
-      const cells = METRICS.map(m => {
-        const v = e[m.key];
-        if (m.type === 'text') return v ? `<td class="note-cell">${esc(v)}</td>` : '<td class="empty-cell">–</td>';
-        if (!isNum(v)) return '<td class="empty-cell">–</td>';
-        if (m.type === 'bool') return `<td>${Number(v) === 1 ? 'Y' : 'N'}</td>`;
-        return `<td>${m.unit === '$' ? '$' + Number(v).toFixed(2) : v}</td>`;
+      const cells = COLS.map(f => {
+        if (f.type === 'ampm') {
+          const parts = [e[f.key + 'AM'] === 1 ? 'AM' : '', e[f.key + 'PM'] === 1 ? 'PM' : ''].filter(Boolean);
+          return parts.length ? `<td>${parts.join('·')}</td>` : dash;
+        }
+        const v = e[f.key];
+        if (f.type === 'text') return v ? `<td class="note-cell">${esc(v)}</td>` : dash;
+        if (f.type === 'check') return Number(v) === 1 ? '<td>Y</td>' : dash;
+        return isNum(v) ? `<td>${v}</td>` : dash;
       }).join('');
       tr.innerHTML = `<td class="date-cell">${dateStr}</td>${cells}
         <td><button class="row-del" data-date="${dateStr}" title="Delete entry">✕</button></td>`;
