@@ -315,6 +315,26 @@
   }
   .ampm-row > span:first-child { justify-self: start; }
   .ampm-head { font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.1em; color: var(--ink-faint); padding-bottom: 0.15rem; }
+  .mood-grid {
+    grid-column: 1 / -1;
+    display: grid; grid-template-columns: 1fr repeat(3, 3.6rem);
+    align-items: center; justify-items: center; row-gap: 0.55rem; column-gap: 0.4rem;
+    font-size: 0.85rem; color: var(--ink-dim);
+  }
+  .mood-grid .mg-label { justify-self: start; }
+  .mood-grid .mg-head { font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint); }
+  .mood-grid input[type="number"] {
+    width: 100%; text-align: center;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 7px;
+    padding: 0.45rem 0.2rem; color: var(--ink); font-family: var(--mono); font-size: 16px;
+  }
+  .mood-grid input[type="number"]:focus { outline: none; border-color: var(--gold-dim); }
+  .prev-banner {
+    grid-column: 1 / -1;
+    background: rgba(168, 92, 72, 0.15); border: 1px solid var(--rust); color: #e0a593;
+    border-radius: 7px; padding: 0.5rem 0.7rem; font-size: 0.82rem;
+  }
+  .prev-banner[hidden] { display: none; }
   .flag-list { font-size: 0.78rem; line-height: 1.7; margin-top: 0.3rem; }
   .flag-list b { color: var(--ink); }
   td.note-cell { text-align: left; white-space: normal; min-width: 14rem; color: var(--ink-dim); font-family: var(--sans); }
@@ -388,14 +408,23 @@
   // Weekly targets (Phase 1)
   const TARGETS = { careerHours: 21, hoursDashed: 21, drinkDaysMax: 2 };
 
-  // type: num | bool | text.  agg: sum | avg | last (for 14-day trends).  trend: show sparkline card
-  // type: num | check | ampm | text.  agg: sum | avg | last (14-day trends).  trend: show sparkline card
+  // type: num | check | text | moodgrid.  agg: sum | avg | last (14-day trends).  trend: show sparkline card
+  const SLOTS = [
+    { id: 'Morning', short: 'M',   color: '#c9973f' },
+    { id: 'Midday',  short: 'Mid', color: '#4c8577' },
+    { id: 'Evening', short: 'E',   color: '#a85c48' },
+  ];
+  const MOOD_FLAGS = [
+    { key: 'irritability',      label: 'Irritability',        col: 'Irrit' },
+    { key: 'cravingConnection', label: 'Craving connection',  col: 'Connect' },
+    { key: 'depression',        label: 'Depression',          col: 'Depress' },
+    { key: 'cortisol',          label: 'Cortisol feelings',   col: 'Cortisol' },
+    { key: 'moodEating',        label: 'Mood-related eating', col: 'Eating' },
+  ];
   const FIELDS = [
-    { section: 'Career search' },
+    { section: 'Hours' },
     { key: 'careerHours',   label: 'Career search', unit: 'hrs', type: 'num', step: 0.25, agg: 'sum', trend: true, color: '#c9973f', col: 'Career' },
-
-    { section: 'DoorDash' },
-    { key: 'hoursDashed',   label: 'Hours dashed',  unit: 'hrs', type: 'num', step: 0.25, agg: 'sum', trend: true, color: '#4c8577', col: 'Dashed' },
+    { key: 'hoursDashed',   label: 'DoorDash',      unit: 'hrs', type: 'num', step: 0.25, agg: 'sum', trend: true, color: '#4c8577', col: 'Dashed' },
 
     { section: 'Drinking / smoking' },
     { key: 'drankSmoked',   label: 'Drank or smoked today', type: 'check', agg: 'sum', trend: true, color: '#a85c48', col: 'Drank' },
@@ -403,29 +432,24 @@
     { key: 'urgeResisted',  label: 'Urges resisted', unit: 'count', type: 'num', step: 1, agg: 'sum', col: 'Urges' },
 
     { section: 'Mood journal' },
-    { key: 'moodAM',        label: 'Mood AM', unit: '1–10', type: 'num', step: 1, min: 1, max: 10, agg: 'avg', trend: true, color: '#c9973f', col: 'Mood AM' },
-    { key: 'moodPM',        label: 'Mood PM', unit: '1–10', type: 'num', step: 1, min: 1, max: 10, agg: 'avg', trend: true, color: '#4c8577', col: 'Mood PM' },
-    { key: 'irritability',  label: 'Irritability / anxiety', unit: '1–10', type: 'num', step: 1, min: 1, max: 10, agg: 'avg', trend: true, color: '#a85c48', col: 'Irrit' },
-    { key: 'sleepHours',    label: 'Sleep', unit: 'hrs', type: 'num', step: 0.25, agg: 'avg', trend: true, color: '#4c8577', col: 'Sleep' },
-    { ampmHeader: true },
-    { key: 'cravingConnection', label: 'Craving connection', type: 'ampm', col: 'Connect' },
-    { key: 'depression',        label: 'Depression',         type: 'ampm', col: 'Depress' },
-    { key: 'cortisol',          label: 'Cortisol feelings',  type: 'ampm', col: 'Cortisol' },
-    { key: 'moodEating',        label: 'Mood-related eating', type: 'ampm', col: 'Eating' },
-    { key: 'drankPrevDay',  label: 'Drank / smoked previous day', type: 'check', agg: 'sum', col: 'Prev drank' },
+    { key: 'sleepHours',    label: 'Sleep last night', unit: 'hrs', type: 'num', step: 0.25, agg: 'avg', trend: true, color: '#4c8577', col: 'Sleep' },
     { key: 'kidsDay',       label: 'Kids with me', type: 'check', agg: 'sum', col: 'Kids' },
+    { type: 'moodgrid' },
     { key: 'note',          label: 'What happened (one line)', type: 'text', full: true, col: 'Note' },
 
     { section: 'Body' },
     { key: 'weightCliff',   label: 'Weight', unit: 'lbs', type: 'num', step: 0.1, agg: 'last', trend: true, color: '#c9973f', col: 'Weight' },
     { key: 'walks',         label: 'Walks',  unit: 'count', type: 'num', step: 1, agg: 'avg', col: 'Walks' },
   ];
-  // Stored keys: each AM/PM item becomes two checkbox keys, e.g. depressionAM / depressionPM
-  const METRICS = FIELDS.filter(f => f.key).flatMap(f => f.type === 'ampm'
-    ? [{ key: f.key + 'AM', type: 'check', parent: f.key }, { key: f.key + 'PM', type: 'check', parent: f.key }]
-    : [f]);
+  // Stored keys: moodMorning/moodMidday/moodEvening (1–10) and one checkbox per flag per check-in, e.g. depressionMidday
+  const MOOD_METRICS = SLOTS.map(sl => ({ key: 'mood' + sl.id, label: 'Mood ' + sl.id.toLowerCase(), unit: '1–10', type: 'num', min: 1, max: 10, agg: 'avg', trend: true, color: sl.color, col: 'Mood ' + sl.short }));
+  const FLAG_METRICS = MOOD_FLAGS.flatMap(f => SLOTS.map(sl => ({ key: f.key + sl.id, type: 'check' })));
+  const METRICS = FIELDS.flatMap(f => f.type === 'moodgrid' ? [...MOOD_METRICS, ...FLAG_METRICS] : (f.key ? [f] : []));
   const KNOWN_KEYS = new Set(METRICS.map(m => m.key));
-  const AMPM_ITEMS = FIELDS.filter(f => f.type === 'ampm');
+  // Ledger table columns: regular fields, then the 3 moods and one column per flag (shows which check-ins)
+  const LEDGER_COLS = FIELDS.flatMap(f => f.type === 'moodgrid'
+    ? [...MOOD_METRICS, ...MOOD_FLAGS.map(m => ({ key: m.key, type: 'slots', col: m.col }))]
+    : (f.key ? [f] : []));
   const WINDOW_DAYS = 14;
 
   const $ = (id) => document.getElementById(id);
@@ -461,17 +485,49 @@
     if (changed) saveEntries(entries);
   })();
 
+  // one-time migration: AM/PM mood and flags -> Morning/Evening check-ins
+  (function migrateCheckins() {
+    let changed = false;
+    const move = (rec, from, to) => {
+      if (Object.prototype.hasOwnProperty.call(rec, from)) {
+        if (!Object.prototype.hasOwnProperty.call(rec, to)) rec[to] = rec[from];
+        delete rec[from];
+        changed = true;
+      }
+    };
+    Object.values(entries).forEach(rec => {
+      if (!rec) return;
+      move(rec, 'moodAM', 'moodMorning');
+      move(rec, 'moodPM', 'moodEvening');
+      ['cravingConnection', 'depression', 'cortisol', 'moodEating'].forEach(k => {
+        move(rec, k + 'AM', k + 'Morning');
+        move(rec, k + 'PM', k + 'Evening');
+      });
+    });
+    if (changed) saveEntries(entries);
+  })();
+
+  function prevDay(iso) {
+    const [y, m, d] = iso.split('-').map(Number);
+    return isoOf(new Date(y, m - 1, d - 1));
+  }
+
   // --- build form ---
   function buildForm() {
     const form = $('entryForm');
     let html = `<div class="field full"><label for="f-date">Date</label><input type="date" id="f-date"></div>`;
     FIELDS.forEach(f => {
       if (f.section) { html += `<div class="section-label">${f.section}</div>`; return; }
-      if (f.ampmHeader) { html += `<div class="ampm-row ampm-head"><span></span><span>AM</span><span>PM</span></div>`; return; }
-      if (f.type === 'ampm') {
-        html += `<div class="ampm-row"><span>${f.label}</span>
-          <input type="checkbox" id="f-${f.key}AM" aria-label="${f.label} AM">
-          <input type="checkbox" id="f-${f.key}PM" aria-label="${f.label} PM"></div>`;
+      if (f.type === 'moodgrid') {
+        html += `<div class="prev-banner" id="prevBanner" hidden>Drank / smoked yesterday</div>`;
+        html += `<div class="mood-grid"><span></span>${SLOTS.map(sl => `<span class="mg-head">${sl.id}</span>`).join('')}`;
+        html += `<span class="mg-label">Mood <span class="unit">1–10</span></span>` + SLOTS.map(sl =>
+          `<input type="number" inputmode="numeric" step="1" min="1" max="10" id="f-mood${sl.id}" placeholder="—" aria-label="Mood ${sl.id}">`).join('');
+        MOOD_FLAGS.forEach(fl => {
+          html += `<span class="mg-label">${fl.label}</span>` + SLOTS.map(sl =>
+            `<input type="checkbox" id="f-${fl.key}${sl.id}" aria-label="${fl.label} ${sl.id}">`).join('');
+        });
+        html += `</div>`;
         return;
       }
       if (f.type === 'check') {
@@ -494,6 +550,8 @@
 
   function populateFormFromDate(dateStr) {
     const e = entries[dateStr] || {};
+    const y = entries[prevDay(dateStr || todayStr())];
+    $('prevBanner').hidden = !(y && Number(y.drankSmoked) === 1);
     METRICS.forEach(m => {
       const v = e[m.key];
       if (m.type === 'check') $('f-' + m.key).checked = Number(v) === 1;
@@ -612,30 +670,18 @@
       <div class="s-sub">${copeDays} to cope · ${sumOf(dates,'urgeResisted')} urges resisted</div>
       <div class="bar"><span style="width:${Math.min(100, drinkDays / TARGETS.drinkDaysMax * 100)}%"></span></div></div>`;
 
-    const mAM = avgOf(elapsed, 'moodAM'), mPM = avgOf(elapsed, 'moodPM');
-    const moods = [mAM, mPM].filter(v => v !== null);
-    const moodAvg = moods.length ? moods.reduce((a,b)=>a+b,0) / moods.length : null;
+    const slotAvgs = SLOTS.map(sl => avgOf(elapsed, 'mood' + sl.id));
+    const allMoods = elapsed.flatMap(d => SLOTS.map(sl => entries[d] && entries[d]['mood' + sl.id])).filter(isNum).map(Number);
+    const moodAvg = allMoods.length ? allMoods.reduce((a,b)=>a+b,0) / allMoods.length : null;
     const moodCard = `<div class="score">
       <div class="s-label">Avg mood</div>
       <div class="s-value">${moodAvg === null ? '—' : r1(moodAvg)} <small>/ 10</small></div>
-      <div class="s-sub">AM ${mAM === null ? '—' : r1(mAM)} · PM ${mPM === null ? '—' : r1(mPM)}</div></div>`;
-
-    const sleep = avgOf(elapsed, 'sleepHours');
-    const irr = avgOf(elapsed, 'irritability');
-    const sleepCard = `<div class="score">
-      <div class="s-label">Avg sleep</div>
-      <div class="s-value">${sleep === null ? '—' : r1(sleep)} <small>hrs</small></div>
-      <div class="s-sub">irritability ${irr === null ? '—' : r1(irr)}</div></div>`;
-
-    const flagDays = (k) => dates.filter(d => entries[d] && (entries[d][k + 'AM'] === 1 || entries[d][k + 'PM'] === 1)).length;
-    const flagsCard = `<div class="score">
-      <div class="s-label">Mood flags (days)</div>
-      <div class="s-sub flag-list">${AMPM_ITEMS.map(f => `${f.col} <b>${flagDays(f.key)}</b>`).join(' · ')}</div></div>`;
+      <div class="s-sub">${SLOTS.map((sl, i) => `${sl.short} ${slotAvgs[i] === null ? '—' : r1(slotAvgs[i])}`).join(' · ')}</div></div>`;
 
     $('scoreGrid').innerHTML =
       hoursCard('Career search', 'careerHours', TARGETS.careerHours) +
       hoursCard('DoorDash', 'hoursDashed', TARGETS.hoursDashed) +
-      drinkCard + moodCard + sleepCard + flagsCard;
+      drinkCard + moodCard;
   }
 
   function lastNDates(n) {
@@ -712,7 +758,7 @@
   }
 
   function renderLedger() {
-    const COLS = FIELDS.filter(f => f.key);
+    const COLS = LEDGER_COLS;
     $('ledgerHead').innerHTML = '<th>Date</th>' + COLS.map(f => `<th>${f.col}</th>`).join('') + '<th></th>';
     const body = $('ledgerBody');
     body.innerHTML = '';
@@ -723,8 +769,8 @@
       const e = entries[dateStr];
       const tr = document.createElement('tr');
       const cells = COLS.map(f => {
-        if (f.type === 'ampm') {
-          const parts = [e[f.key + 'AM'] === 1 ? 'AM' : '', e[f.key + 'PM'] === 1 ? 'PM' : ''].filter(Boolean);
+        if (f.type === 'slots') {
+          const parts = SLOTS.filter(sl => Number(e[f.key + sl.id]) === 1).map(sl => sl.short);
           return parts.length ? `<td>${parts.join('·')}</td>` : dash;
         }
         const v = e[f.key];
