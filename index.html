@@ -331,7 +331,7 @@
 <main>
 
   <section class="card">
-    <h2>This Week <span id="weekRange" style="font-weight:400;color:var(--ink-faint);"></span></h2>
+    <h2><span id="weekTitle">This Week</span> <span id="weekRange" style="font-weight:400;color:var(--ink-faint);"></span></h2>
     <div class="score-grid" id="scoreGrid"></div>
   </section>
 
@@ -554,13 +554,21 @@
   }
 
   // --- weekly scorecard (Mon–Sun) ---
-  function currentWeekDates() {
-    const d = new Date(); d.setHours(0,0,0,0);
+  // Mon–Sun week containing the date picked in the entry form (defaults to today)
+  function selectedWeekDates() {
+    const picked = ($('f-date') && $('f-date').value) || todayStr();
+    const [y, m, dd] = picked.split('-').map(Number);
+    const d = new Date(y, m - 1, dd);
     const dow = (d.getDay() + 6) % 7; // Mon=0
     const mon = new Date(d); mon.setDate(d.getDate() - dow);
     const out = [];
     for (let i = 0; i < 7; i++) { const x = new Date(mon); x.setDate(mon.getDate() + i); out.push(isoOf(x)); }
-    return { dates: out, daysElapsed: dow + 1 };
+    const today = todayStr();
+    let daysElapsed;
+    if (today > out[6]) daysElapsed = 7;            // past week: complete
+    else if (today < out[0]) daysElapsed = 0;       // future week
+    else daysElapsed = out.indexOf(today) + 1;      // current week
+    return { dates: out, daysElapsed, isCurrent: today >= out[0] && today <= out[6] };
   }
 
   function sumOf(dates, key) {
@@ -573,8 +581,9 @@
   const r1 = (v) => Math.round(v * 10) / 10;
 
   function renderScorecard() {
-    const { dates, daysElapsed } = currentWeekDates();
+    const { dates, daysElapsed, isCurrent } = selectedWeekDates();
     const fmt = (iso) => { const [y,m,d] = iso.split('-'); return `${+m}/${+d}`; };
+    $('weekTitle').textContent = isCurrent ? 'This Week' : 'Week of';
     $('weekRange').textContent = `(${fmt(dates[0])}–${fmt(dates[6])})`;
     const elapsed = dates.slice(0, daysElapsed);
 
@@ -586,10 +595,11 @@
       const left = Math.max(0, target - done);
       const daysLeft = 7 - daysElapsed + 1; // includes today
       const perDay = left > 0 ? ` · ${r1(left / daysLeft)}/day to finish` : '';
+      const sub = !isCurrent ? (daysElapsed === 7 ? 'week complete' : 'upcoming week') : `pace ${r1(pace)} by today${perDay}`;
       return `<div class="score ${state}">
         <div class="s-label">${label}</div>
         <div class="s-value">${r1(done)} <small>/ ${target} hrs</small></div>
-        <div class="s-sub">pace ${r1(pace)} by today${perDay}</div>
+        <div class="s-sub">${sub}</div>
         <div class="bar"><span style="width:${pct}%"></span></div></div>`;
     };
 
@@ -750,7 +760,10 @@
   buildForm();
   $('f-date').value = todayStr();
   populateFormFromDate(todayStr());
-  $('f-date').addEventListener('change', () => populateFormFromDate($('f-date').value));
+  // iOS Safari may fire 'input' before 'change' on the date wheel; handle both
+  const onDatePick = () => { populateFormFromDate($('f-date').value); renderScorecard(); };
+  $('f-date').addEventListener('change', onDatePick);
+  $('f-date').addEventListener('input', onDatePick);
   $('saveBtn').addEventListener('click', saveCurrentEntry);
   $('entryForm').addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter' && ev.target.tagName !== 'TEXTAREA') { ev.preventDefault(); saveCurrentEntry(); }
