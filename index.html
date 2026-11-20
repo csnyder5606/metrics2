@@ -418,6 +418,7 @@
     { key: 'irritability',      label: 'Irritability',        col: 'Irrit' },
     { key: 'cravingConnection', label: 'Craving connection',  col: 'Connect' },
     { key: 'depression',        label: 'Depression',          col: 'Depress' },
+    { key: 'anxiety',           label: 'Anxiety',             col: 'Anxiety' },
     { key: 'cortisol',          label: 'Cortisol feelings',   col: 'Cortisol' },
     { key: 'moodEating',        label: 'Mood-related eating', col: 'Eating' },
   ];
@@ -440,6 +441,8 @@
     { section: 'Body' },
     { key: 'weightCliff',   label: 'Weight', unit: 'lbs', type: 'num', step: 0.1, agg: 'last', trend: true, color: '#c9973f', col: 'Weight' },
     { key: 'walks',         label: 'Walks',  unit: 'count', type: 'num', step: 1, agg: 'avg', col: 'Walks' },
+    { key: 'drankWater',    label: 'Drank water',    type: 'check', agg: 'sum', col: 'Water' },
+    { key: 'liftedWeights', label: 'Lifted weights', type: 'check', agg: 'sum', col: 'Lift' },
   ];
   // Stored keys: moodMorning/moodMidday/moodEvening (1–10) and one checkbox per flag per check-in, e.g. depressionMidday
   const MOOD_METRICS = SLOTS.map(sl => ({ key: 'mood' + sl.id, label: 'Mood ' + sl.id.toLowerCase(), unit: '1–10', type: 'num', min: 1, max: 10, agg: 'avg', trend: true, color: sl.color, col: 'Mood ' + sl.short }));
