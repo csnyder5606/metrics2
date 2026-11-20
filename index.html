@@ -337,6 +337,16 @@
   .prev-banner[hidden] { display: none; }
   .flag-list { font-size: 0.78rem; line-height: 1.7; margin-top: 0.3rem; }
   .flag-list b { color: var(--ink); }
+  .sync-box { margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--line); }
+  .sync-status { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-faint); margin-bottom: 0.5rem; }
+  .sync-status.ok { color: var(--teal); }
+  .sync-status.err { color: var(--rust); }
+  .sync-row { display: flex; gap: 0.5rem; }
+  .sync-row[hidden] { display: none; }
+  .sync-row input { flex: 1; min-width: 0; background: var(--surface-2); border: 1px solid var(--line); border-radius: 7px;
+    padding: 0.45rem 0.6rem; color: var(--ink); font-family: var(--mono); font-size: 16px; }
+  /* phone: the sheet is the ledger; hide the wide table */
+  @media (max-width: 700px) { .ledger-wrap { display: none; } .sync-box { border-bottom: none; margin-bottom: 0; padding-bottom: 0; } }
   td.note-cell { text-align: left; white-space: normal; min-width: 14rem; color: var(--ink-dim); font-family: var(--sans); }
 </style>
 </head>
@@ -371,13 +381,24 @@
 
   <section class="card">
     <h2>
-      Ledger
+      Data
       <span class="util-row">
         <button class="ghost" id="exportBtn">Export JSON</button>
         <button class="ghost" id="importBtn">Import JSON</button>
         <input type="file" id="importFile" accept="application/json">
       </span>
     </h2>
+    <div class="sync-box">
+      <div class="sync-status" id="syncStatus">Google Sheet sync: not connected</div>
+      <div class="sync-row" id="syncSetup">
+        <input type="url" id="syncUrl" placeholder="Paste sync link from Apps Script" autocomplete="off" spellcheck="false">
+        <button class="ghost" id="syncConnectBtn">Connect</button>
+      </div>
+      <div class="sync-row" id="syncActions" hidden>
+        <button class="ghost" id="syncNowBtn">Sync now</button>
+        <button class="ghost" id="syncDisconnectBtn">Disconnect</button>
+      </div>
+    </div>
     <div class="ledger-wrap">
       <table>
         <thead><tr id="ledgerHead"></tr></thead>
@@ -390,8 +411,8 @@
 </main>
 
 <footer>
-  Data is stored only in this browser (localStorage) — nothing leaves your device.
-  Export a backup regularly, and re-import it if you switch browsers or clear site data.
+  Entries save in this browser first, then sync to your private Google Sheet when connected.
+  The full ledger table lives in the sheet (and on wider screens here).
 </footer>
 
 <script>
@@ -417,6 +438,7 @@
   const MOOD_FLAGS = [
     { key: 'irritability',      label: 'Irritability',        col: 'Irrit' },
     { key: 'cravingConnection', label: 'Craving connection',  col: 'Connect' },
+    { key: 'feltConnected',     label: 'Felt connected',      col: 'Connected' },
     { key: 'depression',        label: 'Depression',          col: 'Depress' },
     { key: 'anxiety',           label: 'Anxiety',             col: 'Anxiety' },
     { key: 'cortisol',          label: 'Cortisol feelings',   col: 'Cortisol' },
@@ -437,11 +459,12 @@
     { key: 'kidsDay',       label: 'Kids with me', type: 'check', agg: 'sum', col: 'Kids' },
     { type: 'moodgrid' },
     { key: 'note',          label: 'What happened (one line)', type: 'text', full: true, col: 'Note' },
+    { key: 'glimmers',      label: 'Glimmers', type: 'text', full: true, col: 'Glimmers', placeholder: 'Small moments of calm, safety or joy…' },
 
     { section: 'Body' },
     { key: 'weightCliff',   label: 'Weight', unit: 'lbs', type: 'num', step: 0.1, agg: 'last', trend: true, color: '#c9973f', col: 'Weight' },
     { key: 'walks',         label: 'Walks',  unit: 'count', type: 'num', step: 1, agg: 'avg', col: 'Walks' },
-    { key: 'drankWater',    label: 'Drank water',    type: 'check', agg: 'sum', col: 'Water' },
+    { key: 'drankWater',    label: 'Finished my water', type: 'check', agg: 'sum', col: 'Water' },
     { key: 'liftedWeights', label: 'Lifted weights', type: 'check', agg: 'sum', col: 'Lift' },
   ];
   // Stored keys: moodMorning/moodMidday/moodEvening (1–10) and one checkbox per flag per check-in, e.g. depressionMidday
@@ -474,6 +497,84 @@
   function saveEntries(entries) { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); }
 
   let entries = loadEntries();
+
+  // --- Google Sheet sync (Apps Script web app; link holds a private key, stored only in this browser) ---
+  const SYNC_URL_KEY = 'ledger_sync_url';
+  const SYNC_PENDING_KEY = 'ledger_sync_pending'; // { date: editedAtMs } — local edits not yet in the sheet
+  const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const syncUrl = () => lsGet(SYNC_URL_KEY) || '';
+  function getPending() { try { return JSON.parse(lsGet(SYNC_PENDING_KEY) || '{}'); } catch (e) { return {}; } }
+  function setPending(map) { localStorage.setItem(SYNC_PENDING_KEY, JSON.stringify(map)); }
+  function markPending(dates) {
+    if (!syncUrl()) return;
+    const map = getPending(), now = Date.now();
+    dates.forEach(d => { map[d] = now; });
+    setPending(map);
+  }
+  let formDirty = false;   // don't overwrite what's being typed when a sync lands
+  let syncInFlight = null;
+  let syncAgain = false;
+
+  function setSyncStatus(text, cls) {
+    const el = $('syncStatus');
+    el.textContent = text;
+    el.className = 'sync-status' + (cls ? ' ' + cls : '');
+  }
+  function renderSyncUi(msg, cls) {
+    const on = !!syncUrl();
+    $('syncSetup').hidden = on;
+    $('syncActions').hidden = !on;
+    if (msg) setSyncStatus(msg, cls);
+    else if (!on) setSyncStatus('Google Sheet sync: not connected');
+  }
+
+  async function syncNow() {
+    const url = syncUrl();
+    if (!url) return;
+    if (syncInFlight) { syncAgain = true; return syncInFlight; }
+    syncInFlight = (async () => {
+      renderSyncUi('Syncing…');
+      try {
+        const sent = getPending();
+        const rows = {};
+        Object.keys(sent).forEach(d => { rows[d] = entries[d] || null; }); // null = deleted
+        // text/plain body keeps this a "simple" request (no CORS preflight, which Apps Script can't answer)
+        const res = await fetch(url, { method: 'POST', body: JSON.stringify({ action: 'sync', rows }) });
+        const data = await res.json();
+        if (!data || data.ok !== true || typeof data.entries !== 'object') throw new Error((data && data.error) || 'Unexpected reply');
+
+        // clear only the edits we sent that haven't changed since
+        const now = getPending();
+        Object.keys(sent).forEach(d => { if (now[d] === sent[d]) delete now[d]; });
+        setPending(now);
+
+        const remote = data.entries;
+        if (Object.keys(remote).length === 0 && Object.keys(entries).length > 0) {
+          // empty sheet but local data: never wipe — push everything instead
+          markPending(Object.keys(entries));
+          syncAgain = true;
+        } else {
+          const merged = Object.assign({}, remote);
+          Object.keys(now).forEach(d => { if (entries[d]) merged[d] = entries[d]; else delete merged[d]; });
+          entries = merged;
+          saveEntries(entries);
+          if (!formDirty) populateFormFromDate($('f-date').value);
+          renderAll();
+        }
+        const left = Object.keys(getPending()).length;
+        const t = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        renderSyncUi(left ? `Synced ${t} · ${left} change(s) still queued` : `Synced to Google Sheet at ${t}`, 'ok');
+      } catch (e) {
+        console.error('Sync failed', e);
+        const left = Object.keys(getPending()).length;
+        renderSyncUi(`Sync failed — ${left} change(s) saved here, will retry`, 'err');
+      } finally {
+        syncInFlight = null;
+        if (syncAgain) { syncAgain = false; syncNow(); }
+      }
+    })();
+    return syncInFlight;
+  }
 
   // one-time migration kept from v1: 'hobbyRevenue' -> 'hobbyIncomeTasks'
   (function migrateHobbyField() {
@@ -541,7 +642,7 @@
       const cls = f.full ? 'field full' : 'field';
       let input;
       if (f.type === 'text') {
-        input = `<textarea id="f-${f.key}" placeholder="Trigger, win, what helped…"></textarea>`;
+        input = `<textarea id="f-${f.key}" placeholder="${f.placeholder || 'Trigger, win, what helped…'}"></textarea>`;
       } else {
         const mm = (f.min !== undefined ? ` min="${f.min}"` : '') + (f.max !== undefined ? ` max="${f.max}"` : '');
         input = `<input type="number" inputmode="decimal" step="${f.step}"${mm} id="f-${f.key}" placeholder="—">`;
@@ -552,6 +653,7 @@
   }
 
   function populateFormFromDate(dateStr) {
+    formDirty = false;
     const e = entries[dateStr] || {};
     const y = entries[prevDay(dateStr || todayStr())];
     $('prevBanner').hidden = !(y && Number(y.drankSmoked) === 1);
@@ -588,8 +690,10 @@
     if (Object.keys(record).length === 0) delete entries[dateStr];
     else entries[dateStr] = record;
     saveEntries(entries);
+    markPending([dateStr]);
     populateFormFromDate(dateStr);
     renderAll();
+    syncNow();
     const hint = $('saveHint');
     hint.classList.add('show');
     setTimeout(() => hint.classList.remove('show'), 1400);
@@ -791,8 +895,10 @@
         if (confirm(`Delete the entry for ${d}?`)) {
           delete entries[d];
           saveEntries(entries);
+          markPending([d]);
           populateFormFromDate($('f-date').value);
           renderAll();
+          syncNow();
         }
       });
     });
@@ -834,8 +940,11 @@
       try {
         const incoming = JSON.parse(reader.result);
         const mode = confirm('Click OK to merge with existing data, or Cancel to replace it entirely.');
+        const before = Object.keys(entries);
         entries = mode ? Object.assign({}, entries, incoming) : incoming;
         saveEntries(entries);
+        markPending([...new Set(before.concat(Object.keys(entries)))]);
+        syncNow();
         populateFormFromDate($('f-date').value);
         renderAll();
         alert('Import complete.');
@@ -847,7 +956,34 @@
     ev.target.value = '';
   });
 
+  // form edits mark it dirty so a background sync doesn't clobber typing
+  $('entryForm').addEventListener('input', (ev) => { if (ev.target.id !== 'f-date') formDirty = true; });
+  $('entryForm').addEventListener('change', (ev) => { if (ev.target.id !== 'f-date') formDirty = true; });
+
+  $('syncConnectBtn').addEventListener('click', () => {
+    const url = $('syncUrl').value.trim();
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec\?key=.+/.test(url)) {
+      setSyncStatus('That doesn\'t look like the sync link (https://script.google.com/macros/s/…/exec?key=…)', 'err');
+      return;
+    }
+    localStorage.setItem(SYNC_URL_KEY, url);
+    $('syncUrl').value = '';
+    markPending(Object.keys(entries)); // first connect: push everything this browser has
+    syncNow();
+  });
+  $('syncNowBtn').addEventListener('click', () => syncNow());
+  $('syncDisconnectBtn').addEventListener('click', () => {
+    if (!confirm('Disconnect this browser from the Google Sheet? Your entries stay here and in the sheet.')) return;
+    localStorage.removeItem(SYNC_URL_KEY);
+    localStorage.removeItem(SYNC_PENDING_KEY);
+    renderSyncUi();
+  });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncNow(); });
+  window.addEventListener('online', () => syncNow());
+
   renderAll();
+  renderSyncUi();
+  syncNow();
 })();
 </script>
 
