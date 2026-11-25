@@ -1180,7 +1180,7 @@
       : `<div class="p-line p-note">${x.label}: not enough data yet (${x.withN} with, ${x.withoutN} without; needs ${MIN_SIDE} each)</div>`).join('');
 
     h += `<div class="p-block"><div class="p-title">The day after</div>${cmpLines(A.dayAfter)}</div>`;
-    h += `<div class="p-block"><div class="p-title">What helps</div>${cmpLines(A.helps)}</div>`;
+    h += `<div class="p-block"><div class="p-title">Mood links</div>${cmpLines(A.helps)}</div>`;
 
     h += `<div class="p-block"><div class="p-title">Time of day</div>`;
     h += `<div class="p-line">${A.slotAvg.map(s => `${s.id} <b>${f1(s.avg)}</b>`).join(' · ')}</div>`;
@@ -1346,7 +1346,7 @@
       ['PHQ-4', lines.phq], ['Overview', lines.overview],
       ['Notes insights', ins ? ['x'] : [], ins ? `<div class="ts-meta">${esc(insMeta)}</div>${mdLite(ins.text)}` : null],
       ['Mood flags', lines.flags], ['The day after', lines.after],
-      ['What helps', lines.helps], ['Time of day', lines.tod],
+      ['Mood links', lines.helps], ['Time of day', lines.tod],
     ].filter(s => s[1].length);
     const watch = A.watch.map(f => `${f.label} flagged on ${f.n} of ${f.of} check-in days.`);
     const foot = 'Self-tracked daily log. Comparisons are correlations, not causes; each one needs at least 3 days on each side.' +
