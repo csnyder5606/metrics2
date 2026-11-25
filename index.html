@@ -348,6 +348,53 @@
   /* phone: the sheet is the ledger; hide the wide table */
   @media (max-width: 700px) { .ledger-wrap { display: none; } .sync-box { border-bottom: none; margin-bottom: 0; padding-bottom: 0; } }
   td.note-cell { text-align: left; white-space: normal; min-width: 14rem; color: var(--ink-dim); font-family: var(--sans); }
+
+  /* --- summary & patterns --- */
+  .collapse-head {
+    width: 100%; background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between; color: inherit; text-align: left;
+  }
+  .collapse-head h2 { margin: 0; }
+  .chev { color: var(--ink-faint); font-size: 0.8rem; transition: transform 0.2s; }
+  .collapse-head[aria-expanded="true"] .chev { transform: rotate(180deg); }
+  #patternsBody { margin-top: 1rem; }
+  #patternsBody[hidden] { display: none; }
+  .p-block { border-top: 1px solid var(--line); padding-top: 0.8rem; margin-top: 0.9rem; }
+  .p-title { font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); margin-bottom: 0.5rem; }
+  .p-row { display: grid; grid-template-columns: 1fr auto auto; gap: 0.7rem; align-items: baseline; font-size: 0.85rem; color: var(--ink-dim); padding: 0.28rem 0; }
+  .p-row .v { font-family: var(--mono); color: var(--ink); text-align: right; }
+  .p-row .d { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-faint); min-width: 4.2rem; text-align: right; }
+  .p-row .v.better { color: var(--teal); }
+  .p-row .v.worse { color: var(--rust); }
+  .p-head { font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint); }
+  .p-note { font-size: 0.78rem; color: var(--ink-faint); line-height: 1.5; }
+  .p-line { font-size: 0.85rem; color: var(--ink-dim); line-height: 1.55; padding: 0.15rem 0; }
+  .p-line b { color: var(--ink); font-weight: 600; }
+  .p-watch { background: rgba(201, 151, 63, 0.12); border: 1px solid var(--gold-dim); color: #e6c98f; border-radius: 7px; padding: 0.55rem 0.7rem; font-size: 0.82rem; line-height: 1.5; margin-top: 0.9rem; }
+  .p-actions { margin-top: 1rem; display: flex; gap: 0.6rem; flex-wrap: wrap; }
+
+  /* --- therapist summary overlay --- */
+  #tsOverlay { position: fixed; inset: 0; z-index: 50; background: #fff; color: #1a1a1a; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  #tsOverlay[hidden] { display: none; }
+  .ts-bar { position: sticky; top: 0; background: #f3f1ec; border-bottom: 1px solid #ddd; padding: 0.7rem 1rem; display: flex; gap: 0.5rem; justify-content: flex-end; }
+  .ts-bar button { background: #fff; border: 1px solid #bbb; border-radius: 7px; padding: 0.45rem 0.8rem; font-size: 0.82rem; color: #1a1a1a; cursor: pointer; }
+  .ts-page { max-width: 720px; margin: 0 auto; padding: 1.4rem 1.2rem 3rem; font-family: var(--sans); font-size: 0.9rem; line-height: 1.5; }
+  .ts-page h1 { font-size: 1.25rem; margin: 0 0 0.2rem; }
+  .ts-page .ts-meta { color: #666; font-size: 0.8rem; margin-bottom: 1rem; }
+  .ts-page h3 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: #555; margin: 1.2rem 0 0.4rem; border-bottom: 1px solid #ddd; padding-bottom: 0.2rem; }
+  .ts-page table { font-family: var(--sans); font-size: 0.85rem; width: 100%; }
+  .ts-page th, .ts-page td { border-bottom: 1px solid #eee; padding: 0.3rem 0.4rem; text-align: right; white-space: normal; }
+  .ts-page th:first-child, .ts-page td:first-child { text-align: left; }
+  .ts-page th { color: #666; font-size: 0.7rem; }
+  .ts-page ul { margin: 0.2rem 0; padding-left: 1.1rem; }
+  .ts-page .ts-foot { color: #777; font-size: 0.75rem; margin-top: 1.4rem; }
+  @media print {
+    body > *:not(#tsOverlay) { display: none !important; }
+    body { background: #fff; padding: 0; }
+    #tsOverlay { position: static; overflow: visible; }
+    .ts-bar { display: none; }
+    .ts-page { padding: 0; }
+  }
 </style>
 </head>
 <body>
@@ -377,6 +424,26 @@
   <section class="card">
     <h2>Trends <span id="dashRange" style="font-weight:400;color:var(--ink-faint);"></span></h2>
     <div class="metric-grid" id="metricGrid"></div>
+  </section>
+
+  <section class="card" id="patternsCard">
+    <button class="collapse-head" id="patternsToggle" aria-expanded="false" aria-controls="patternsBody">
+      <h2>Summary &amp; Patterns</h2><span class="chev">▼</span>
+    </button>
+    <div id="patternsBody" hidden>
+      <div class="field">
+        <label for="assessRange">Assess range</label>
+        <select id="assessRange">
+          <option value="7">Last 7 days</option>
+          <option value="14">Last 14 days</option>
+          <option value="90">Last 90 days</option>
+        </select>
+      </div>
+      <div id="patternsOut"></div>
+      <div class="p-actions">
+        <button class="ghost" id="tsOpenBtn">Therapist summary</button>
+      </div>
+    </div>
   </section>
 
   <section class="card">
@@ -409,6 +476,15 @@
   </section>
 
 </main>
+
+<div id="tsOverlay" hidden>
+  <div class="ts-bar">
+    <button id="tsShareBtn">Share</button>
+    <button id="tsPrintBtn">Save as PDF</button>
+    <button id="tsCloseBtn">Close</button>
+  </div>
+  <div class="ts-page" id="tsPage"></div>
+</div>
 
 <footer>
   Entries save in this browser first, then sync to your private Google Sheet when connected.
@@ -904,11 +980,226 @@
     });
   }
 
+  // --- summary & patterns ---
+  const PAT_OPEN_KEY = 'ledger_patterns_open';
+  const PAT_RANGE_KEY = 'ledger_assess_range';
+  const MIN_SIDE = 3;   // days needed on each side of a comparison
+  const MIN_WATCH = 5;  // check-in days needed before the watch flag can show
+
+  function rangeDates(n, offset) { // n days ending (offset) days before today
+    const out = [];
+    const d = new Date(); d.setHours(0,0,0,0);
+    for (let i = n - 1 + offset; i >= offset; i--) { const x = new Date(d); x.setDate(d.getDate() - i); out.push(isoOf(x)); }
+    return out;
+  }
+  const mean = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  const slotMoods = (d) => SLOTS.map(sl => entries[d] && entries[d]['mood' + sl.id]).filter(isNum).map(Number);
+  const dayMood = (d) => mean(slotMoods(d));
+  const flagOn = (d, key) => !!entries[d] && SLOTS.some(sl => Number(entries[d][key + sl.id]) === 1);
+  const checkOn = (d, key) => !!entries[d] && Number(entries[d][key]) === 1;
+  const hasCheckin = (d) => slotMoods(d).length > 0 || MOOD_FLAGS.some(f => flagOn(d, f.key));
+
+  // first date a field ever appears, so days before it existed don't count as "without"
+  function firstSeen(keys) {
+    let first = null;
+    Object.keys(entries).forEach(d => {
+      const e = entries[d];
+      if (e && keys.some(k => e[k] !== undefined && e[k] !== '' && e[k] !== null) && (first === null || d < first)) first = d;
+    });
+    return first;
+  }
+  const slotKeys = (key) => SLOTS.map(sl => key + sl.id);
+
+  function periodStats(dates) {
+    const logged = dates.filter(d => entries[d]);
+    const checkins = dates.filter(hasCheckin);
+    const allMoods = dates.flatMap(slotMoods);
+    const swings = dates.filter(d => entries[d] && isNum(entries[d].moodMorning) && isNum(entries[d].moodEvening))
+      .map(d => Number(entries[d].moodEvening) - Number(entries[d].moodMorning));
+    const sleeps = dates.map(d => entries[d] && entries[d].sleepHours).filter(isNum).map(Number);
+    return {
+      days: dates.length, logged: logged.length, checkins: checkins.length,
+      mood: mean(allMoods), swing: mean(swings), swingN: swings.length,
+      drink: dates.filter(d => checkOn(d, 'drankSmoked')).length,
+      cope: dates.filter(d => checkOn(d, 'toCope')).length,
+      urges: sumOf(dates, 'urgeResisted'),
+      sleep: mean(sleeps),
+      career: sumOf(dates, 'careerHours'), dash: sumOf(dates, 'hoursDashed'),
+      flags: MOOD_FLAGS.map(f => {
+        // only days after this flag was added to the app count toward it
+        const first = firstSeen(slotKeys(f.key));
+        const pool = first === null ? [] : checkins.filter(d => d >= first);
+        return { key: f.key, label: f.label, n: pool.filter(d => flagOn(d, f.key)).length, of: pool.length };
+      }),
+    };
+  }
+
+  function compare(dates, label, test, eligible) {
+    const pool = dates.filter(d => dayMood(d) !== null && (!eligible || eligible(d)));
+    const yes = pool.filter(test).map(dayMood), no = pool.filter(d => !test(d)).map(dayMood);
+    const ok = yes.length >= MIN_SIDE && no.length >= MIN_SIDE;
+    return { label, ok, withN: yes.length, withoutN: no.length, withAvg: mean(yes), withoutAvg: mean(no),
+             gap: ok ? mean(yes) - mean(no) : null };
+  }
+
+  function analyze(n) {
+    const dates = rangeDates(n, 0), prior = rangeDates(n, n);
+    const cur = periodStats(dates), prev = periodStats(prior);
+    const since = (keys) => { const f = firstSeen(keys); return (d) => f !== null && d >= f; };
+    const prevLogged = (d) => !!entries[prevDay(d)];
+
+    const dayAfter = [
+      compare(dates, 'Day after drinking / smoking', d => checkOn(prevDay(d), 'drankSmoked'), prevLogged),
+      compare(dates, 'Day after drinking to cope', d => checkOn(prevDay(d), 'toCope'),
+              (d) => prevLogged(d) && since(['toCope'])(prevDay(d))),
+    ];
+    const sleepEl = (d) => entries[d] && isNum(entries[d].sleepHours);
+    const helps = [
+      compare(dates, 'Felt connected', d => flagOn(d, 'feltConnected'), since(slotKeys('feltConnected'))),
+      compare(dates, 'Walked', d => entries[d] && Number(entries[d].walks) > 0, since(['walks'])),
+      compare(dates, 'Lifted weights', d => checkOn(d, 'liftedWeights'), since(['liftedWeights'])),
+      compare(dates, 'Finished my water', d => checkOn(d, 'drankWater'), since(['drankWater'])),
+      compare(dates, 'Kids with me', d => checkOn(d, 'kidsDay'), since(['kidsDay'])),
+      compare(dates, 'Slept 7+ hrs', d => Number(entries[d].sleepHours) >= 7, sleepEl),
+    ];
+    helps.sort((a, b) => (b.ok - a.ok) || ((b.gap || 0) - (a.gap || 0)));
+
+    const slotAvg = SLOTS.map(sl => ({ id: sl.id, avg: avgOf(dates, 'mood' + sl.id),
+      n: dates.filter(d => entries[d] && isNum(entries[d]['mood' + sl.id])).length }));
+    const withAvg = slotAvg.filter(s => s.avg !== null && s.n >= MIN_SIDE);
+    const lowest = withAvg.length >= 2 ? withAvg.reduce((a, b) => (b.avg < a.avg ? b : a)) : null;
+    const dipDays = dates.filter(d => entries[d] && isNum(entries[d].moodMidday) && isNum(entries[d].moodEvening));
+    const dips = dipDays.filter(d => Number(entries[d].moodEvening) < Number(entries[d].moodMidday)).length;
+
+    const watch = [];
+    if (cur.checkins >= MIN_WATCH) {
+      ['depression', 'anxiety'].forEach(k => {
+        const f = cur.flags.find(x => x.key === k);
+        if (f.of >= MIN_WATCH && f.n > f.of / 2) watch.push(f);
+      });
+    }
+    return { n, dates, cur, prev, dayAfter, helps, slotAvg, lowest, dipDays: dipDays.length, dips, watch };
+  }
+
+  const fmtD = (iso) => { const [y, m, d] = iso.split('-'); return `${+m}/${+d}/${y.slice(2)}`; };
+  const f1 = (v) => (v === null || v === undefined) ? '—' : String(r1(v));
+  const sgn = (v) => (v > 0 ? '+' : '') + r1(v);
+  // better: 1 if higher is better, -1 if lower is better, 0 neutral
+  function cmpCls(a, b, better) {
+    if (!better || a === null || b === null || a === b) return '';
+    return (a > b) === (better > 0) ? 'better' : 'worse';
+  }
+
+  function renderPatterns() {
+    const out = $('patternsOut');
+    if (!out || $('patternsBody').hidden) return;
+    const A = analyze(Number($('assessRange').value));
+    const c = A.cur, p = A.prev;
+    const row = (label, v, pv, cls) => `<div class="p-row"><span>${label}</span><span class="v ${cls}">${v}</span><span class="d">${pv}</span></div>`;
+    // prior period only counts if it has enough check-in days to compare against
+    const priorOk = p.checkins >= MIN_SIDE;
+    const pv = (v) => priorOk ? v : '—';
+    const pc = (a, b, better) => priorOk ? cmpCls(a, b, better) : '';
+    const rate = (n, of) => of ? n / of : null;
+
+    let h = `<div class="p-block"><div class="p-title">Overview</div>
+      <div class="p-row p-head"><span></span><span>This period</span><span>Prior ${A.n}d</span></div>`;
+    h += row('Days logged', `${c.logged}/${c.days}`, `${p.logged}/${p.days}`, cmpCls(c.logged, p.logged, 1));
+    h += row('Avg mood', f1(c.mood), pv(f1(p.mood)), pc(c.mood, p.mood, 1));
+    h += row('Morning → evening', c.swing === null ? '—' : sgn(c.swing), pv(p.swing === null ? '—' : sgn(p.swing)), pc(c.swing, p.swing, 1));
+    h += row('Avg sleep', f1(c.sleep), pv(f1(p.sleep)), pc(c.sleep, p.sleep, 1));
+    h += row('Drink / smoke days', c.drink, pv(p.drink), pc(c.drink, p.drink, -1));
+    h += row('…to cope', c.cope, pv(p.cope), pc(c.cope, p.cope, -1));
+    h += row('Urges resisted', c.urges, pv(p.urges), '');
+    h += `</div>`;
+
+    h += `<div class="p-block"><div class="p-title">Mood flags <span style="color:var(--ink-faint)">· days / check-ins</span></div>`;
+    c.flags.forEach((f, i) => {
+      const pf = p.flags[i];
+      const better = f.key === 'feltConnected' ? 1 : -1;
+      h += row(f.label, f.of ? `${f.n}/${f.of}` : '—', pf.of >= MIN_SIDE ? `${pf.n}/${pf.of}` : '—',
+               pf.of >= MIN_SIDE ? cmpCls(rate(f.n, f.of), rate(pf.n, pf.of), better) : '');
+    });
+    h += `</div>`;
+
+    const cmpLines = (list) => list.map(x => x.ok
+      ? `<div class="p-line">${x.label}: mood <b>${f1(x.withAvg)}</b> vs <b>${f1(x.withoutAvg)}</b> without <span class="p-note">(${x.withN} vs ${x.withoutN} days, ${sgn(x.gap)})</span></div>`
+      : `<div class="p-line p-note">${x.label}: not enough data yet (${x.withN} with, ${x.withoutN} without; needs ${MIN_SIDE} each)</div>`).join('');
+
+    h += `<div class="p-block"><div class="p-title">The day after</div>${cmpLines(A.dayAfter)}</div>`;
+    h += `<div class="p-block"><div class="p-title">What helps</div>${cmpLines(A.helps)}</div>`;
+
+    h += `<div class="p-block"><div class="p-title">Time of day</div>`;
+    h += `<div class="p-line">${A.slotAvg.map(s => `${s.id} <b>${f1(s.avg)}</b>`).join(' · ')}</div>`;
+    if (A.lowest) h += `<div class="p-line">Lowest check-in: <b>${A.lowest.id}</b></div>`;
+    if (A.dipDays >= MIN_SIDE) h += `<div class="p-line">Evening lower than midday on <b>${A.dips} of ${A.dipDays}</b> days</div>`;
+    h += `</div>`;
+
+    A.watch.forEach(f => {
+      h += `<div class="p-watch">${f.label} was flagged on ${f.n} of ${f.of} check-in days. That's worth raising with a doctor or therapist.</div>`;
+    });
+    h += `<div class="p-note" style="margin-top:0.9rem;">These are correlations, not causes. They get more reliable with more days logged.</div>`;
+    out.innerHTML = h;
+  }
+
+  // --- therapist summary ---
+  function buildTherapistSummary() {
+    const A = analyze(Number($('assessRange').value));
+    const c = A.cur;
+    const range = `${fmtD(A.dates[0])} – ${fmtD(A.dates[A.dates.length - 1])}`;
+    const okList = (list) => list.filter(x => x.ok);
+    const lines = { overview: [], flags: [], after: [], helps: [], tod: [] };
+
+    lines.overview.push(`Days logged: ${c.logged} of ${c.days}`);
+    lines.overview.push(`Average mood (1–10): ${f1(c.mood)}`);
+    lines.overview.push(`Mood by check-in: ${A.slotAvg.map(s => `${s.id} ${f1(s.avg)}`).join(', ')}`);
+    if (c.swing !== null) lines.overview.push(`Average change morning → evening: ${sgn(c.swing)} (${c.swingN} days)`);
+    lines.overview.push(`Average sleep: ${f1(c.sleep)} hrs`);
+    lines.overview.push(`Drink / smoke days: ${c.drink} (to cope: ${c.cope}); urges resisted: ${c.urges}`);
+    lines.overview.push(`Career search: ${r1(c.career)} hrs · DoorDash: ${r1(c.dash)} hrs`);
+    c.flags.filter(f => f.of).forEach(f => lines.flags.push(`${f.label}: ${f.n} of ${f.of} check-in days`));
+    okList(A.dayAfter).forEach(x => lines.after.push(`${x.label}: mood ${f1(x.withAvg)} vs ${f1(x.withoutAvg)} otherwise (${x.withN} vs ${x.withoutN} days)`));
+    okList(A.helps).forEach(x => lines.helps.push(`${x.label}: mood ${f1(x.withAvg)} with vs ${f1(x.withoutAvg)} without (${x.withN} vs ${x.withoutN} days)`));
+    if (A.lowest) lines.tod.push(`Lowest check-in: ${A.lowest.id}`);
+    if (A.dipDays >= MIN_SIDE) lines.tod.push(`Evening lower than midday on ${A.dips} of ${A.dipDays} days`);
+
+    const sections = [
+      ['Overview', lines.overview], ['Mood flags', lines.flags], ['The day after', lines.after],
+      ['What helps', lines.helps], ['Time of day', lines.tod],
+    ].filter(s => s[1].length);
+    const watch = A.watch.map(f => `${f.label} flagged on ${f.n} of ${f.of} check-in days.`);
+    const foot = 'Self-tracked daily log. Comparisons are correlations, not causes; each one needs at least 3 days on each side.';
+
+    const html = `<h1>Mood &amp; habits summary</h1>
+      <div class="ts-meta">${A.n} days: ${range} · generated ${fmtD(todayStr())}</div>
+      ${watch.length ? `<h3>Flagged</h3><ul>${watch.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+      ${sections.map(([t, ls]) => `<h3>${t}</h3><ul>${ls.map(l => `<li>${esc(l)}</li>`).join('')}</ul>`).join('')}
+      <div class="ts-foot">${foot}</div>`;
+    const text = [`Mood & habits summary`, `${A.n} days: ${range}`, '',
+      ...(watch.length ? ['FLAGGED', ...watch.map(w => '- ' + w), ''] : []),
+      ...sections.flatMap(([t, ls]) => [t.toUpperCase(), ...ls.map(l => '- ' + l), '']), foot].join('\n');
+    return { html, text };
+  }
+  let tsText = '';
+  function openTherapistSummary() {
+    const s = buildTherapistSummary();
+    $('tsPage').innerHTML = s.html;
+    tsText = s.text;
+    $('tsOverlay').hidden = false;
+    $('tsOverlay').scrollTop = 0;
+    document.body.style.overflow = 'hidden';
+  }
+  function closeTherapistSummary() {
+    $('tsOverlay').hidden = true;
+    document.body.style.overflow = '';
+  }
+
   function renderAll() {
     renderStreak();
     renderScorecard();
     renderDashboard();
     renderLedger();
+    renderPatterns();
   }
 
   // --- wire up ---
@@ -980,6 +1271,35 @@
   });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncNow(); });
   window.addEventListener('online', () => syncNow());
+
+  // summary & patterns: remember open state and range in this browser
+  (function initPatterns() {
+    const saved = lsGet(PAT_RANGE_KEY);
+    $('assessRange').value = ['7', '14', '90'].includes(saved) ? saved : '14';
+    const setOpen = (open) => {
+      $('patternsBody').hidden = !open;
+      $('patternsToggle').setAttribute('aria-expanded', String(open));
+      try { localStorage.setItem(PAT_OPEN_KEY, open ? '1' : '0'); } catch (e) {}
+      if (open) renderPatterns();
+    };
+    setOpen(lsGet(PAT_OPEN_KEY) === '1');
+    $('patternsToggle').addEventListener('click', () => setOpen($('patternsBody').hidden));
+    $('assessRange').addEventListener('change', () => {
+      try { localStorage.setItem(PAT_RANGE_KEY, $('assessRange').value); } catch (e) {}
+      renderPatterns();
+    });
+    $('tsOpenBtn').addEventListener('click', openTherapistSummary);
+    $('tsCloseBtn').addEventListener('click', closeTherapistSummary);
+    $('tsPrintBtn').addEventListener('click', () => window.print());
+    $('tsShareBtn').addEventListener('click', async () => {
+      try {
+        if (navigator.share) { await navigator.share({ title: 'Mood & habits summary', text: tsText }); return; }
+        await navigator.clipboard.writeText(tsText);
+        $('tsShareBtn').textContent = 'Copied';
+        setTimeout(() => { $('tsShareBtn').textContent = 'Share'; }, 1500);
+      } catch (e) { if (e && e.name !== 'AbortError') console.error('Share failed', e); }
+    });
+  })();
 
   renderAll();
   renderSyncUi();
