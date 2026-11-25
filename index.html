@@ -1036,6 +1036,7 @@
   const PAT_RANGE_KEY = 'ledger_assess_range';
   const MIN_SIDE = 3;   // days needed on each side of a comparison
   const MIN_WATCH = 5;  // check-in days needed before the watch flag can show
+  const MIN_WATCH_CHECKINS = 10; // and check-ins for that flag
   const MIN_LINK = 7;   // days on each side before a mood link is shown
 
   function rangeDates(n, offset) { // n days ending (offset) days before today
@@ -1049,6 +1050,8 @@
   const dayMood = (d) => mean(slotMoods(d));
   const flagOn = (d, key) => !!entries[d] && SLOTS.some(sl => Number(entries[d][key + sl.id]) === 1);
   const checkOn = (d, key) => !!entries[d] && Number(entries[d][key]) === 1;
+  const checkinSlots = (d) => !entries[d] ? [] : SLOTS.map(sl => sl.id).filter(id =>
+    isNum(entries[d]['mood' + id]) || MOOD_FLAGS.some(f => Number(entries[d][f.key + id]) === 1));
   const hasCheckin = (d) => slotMoods(d).length > 0 || MOOD_FLAGS.some(f => flagOn(d, f.key));
 
   // first date a field ever appears, so days before it existed don't count as "without"
@@ -1069,7 +1072,11 @@
     const swings = dates.filter(d => entries[d] && isNum(entries[d].moodMorning) && isNum(entries[d].moodEvening))
       .map(d => Number(entries[d].moodEvening) - Number(entries[d].moodMorning));
     const sleeps = dates.map(d => entries[d] && entries[d].sleepHours).filter(isNum).map(Number);
+    const both = (a, b) => dates.filter(d => entries[d] && isNum(entries[d]['mood' + a]) && isNum(entries[d]['mood' + b]))
+      .map(d => Number(entries[d]['mood' + b]) - Number(entries[d]['mood' + a]));
+    const lifts = both('Morning', 'Midday'), drops = both('Midday', 'Evening');
     return {
+      lift: mean(lifts), liftN: lifts.length, drop: mean(drops), dropN: drops.length,
       days: dates.length, logged: logged.length, checkins: checkins.length,
       mood: mean(allMoods), swing: mean(swings), swingN: swings.length,
       drink: dates.filter(d => checkOn(d, 'drankSmoked')).length,
@@ -1077,22 +1084,28 @@
       urges: sumOf(dates, 'urgeResisted'),
       sleep: mean(sleeps),
       career: sumOf(dates, 'careerHours'), dash: sumOf(dates, 'hoursDashed'),
+      // counted per check-in (up to 3 a day), only from the day this flag was added to the app
       flags: MOOD_FLAGS.map(f => {
-        // only days after this flag was added to the app count toward it
         const first = firstSeen(slotKeys(f.key));
         const pool = first === null ? [] : checkins.filter(d => d >= first);
-        return { key: f.key, label: f.label, n: pool.filter(d => flagOn(d, f.key)).length, of: pool.length };
+        const slots = pool.flatMap(d => checkinSlots(d).map(sl => [d, sl]));
+        return { key: f.key, label: f.label, n: slots.filter(([d, sl]) => Number(entries[d][f.key + sl]) === 1).length, of: slots.length };
       }),
     };
   }
 
-  function compare(dates, label, test, eligible) {
-    const pool = dates.filter(d => dayMood(d) !== null && (!eligible || eligible(d)));
+  // compares a value (default: that day's average mood) on days with vs without something
+  function compare(dates, label, test, eligible, opts) {
+    const o = opts || {};
+    const val = o.value || dayMood;
+    const pool = dates.filter(d => val(d) !== null && (!eligible || eligible(d)));
     const yesD = pool.filter(test), noD = pool.filter(d => !test(d));
-    const yes = yesD.map(dayMood), no = noD.map(dayMood);
+    const yes = yesD.map(val), no = noD.map(val);
+    const rng = (a) => a.length ? `${Math.min(...a)}–${Math.max(...a)}` : '—';
     const ok = yes.length >= MIN_SIDE && no.length >= MIN_SIDE;
     return { label, ok, withN: yes.length, withoutN: no.length, withAvg: mean(yes), withoutAvg: mean(no),
-             gap: ok ? mean(yes) - mean(no) : null, withDates: yesD, withoutDates: noD };
+             gap: ok ? mean(yes) - mean(no) : null, withDates: yesD, withoutDates: noD,
+             metric: o.metric || 'mood', range: o.range ? [rng(yes), rng(no)] : null };
   }
 
   function analyze(n) {
@@ -1101,8 +1114,12 @@
     const since = (keys) => { const f = firstSeen(keys); return (d) => f !== null && d >= f; };
     const prevLogged = (d) => !!entries[prevDay(d)];
 
+    const num = (k) => (d) => (entries[d] && isNum(entries[d][k]) ? Number(entries[d][k]) : null);
     const dayAfter = [
-      compare(dates, 'Day after drinking / smoking', d => checkOn(prevDay(d), 'drankSmoked'), prevLogged),
+      compare(dates, 'Sleep after a drinking night', d => checkOn(prevDay(d), 'drankSmoked'), prevLogged,
+              { value: num('sleepHours'), metric: 'sleep (hrs)' }),
+      compare(dates, 'Evening on drink days', d => checkOn(d, 'drankSmoked'), since(['drankSmoked']),
+              { value: num('moodEvening'), metric: 'evening mood', range: true }),
       compare(dates, 'Day after drinking to cope', d => checkOn(prevDay(d), 'toCope'),
               (d) => prevLogged(d) && since(['toCope'])(prevDay(d))),
     ];
@@ -1113,6 +1130,9 @@
       compare(dates, 'Lifted weights', d => checkOn(d, 'liftedWeights'), since(['liftedWeights'])),
       compare(dates, 'Finished my water', d => checkOn(d, 'drankWater'), since(['drankWater'])),
       compare(dates, 'Kids with me', d => checkOn(d, 'kidsDay'), since(['kidsDay'])),
+      compare(dates, 'Kids handoff day', d => checkOn(d, 'kidsDay') !== checkOn(prevDay(d), 'kidsDay'),
+              (d) => prevLogged(d) && since(['kidsDay'])(prevDay(d))),
+      compare(dates, 'Career search 3+ hrs', d => Number(entries[d].careerHours) >= 3, since(['careerHours'])),
       compare(dates, 'Slept 7+ hrs', d => Number(entries[d].sleepHours) >= 7, sleepEl),
     ];
     helps.sort((a, b) => (b.ok - a.ok) || ((b.gap || 0) - (a.gap || 0)));
@@ -1128,7 +1148,7 @@
     if (cur.checkins >= MIN_WATCH) {
       ['depression', 'anxiety'].forEach(k => {
         const f = cur.flags.find(x => x.key === k);
-        if (f.of >= MIN_WATCH && f.n > f.of / 2) watch.push(f);
+        if (f.of >= MIN_WATCH_CHECKINS && f.n > f.of / 2) watch.push(f);
       });
     }
     return { n, dates, cur, prev, dayAfter, helps, slotAvg, lowest, dipDays: dipDays.length, dips, watch };
@@ -1162,14 +1182,13 @@
       if (pos.length) phqNote = pos.length === 2 ? 'Latest anxiety and depression scores are both 3 or higher, a positive screen on each.' : `Latest ${pos[0]} score is 3 or higher, a positive screen.`;
     }
 
-    const watch = A.watch.map(f => `${f.label} flagged on ${f.n} of ${f.of} check-in days.`);
+    const watch = A.watch.map(f => `${f.label} flagged at ${f.n} of ${f.of} check-ins.`);
 
     const ov = (label, v, pv, cls) => ({ label, v: String(v), pv: priorOk ? String(pv) : '—', cls: priorOk ? cls : '' });
     const overview = [
       ov('Days logged', `${c.logged}/${c.days}`, `${p.logged}/${p.days}`, cmpCls(c.logged, p.logged, 1)),
       ov('Avg mood', f1(c.mood), f1(p.mood), cmpCls(c.mood, p.mood, 1)),
       ov('Mood by check-in', A.slotAvg.map(sl => `${sl.id} ${f1(sl.avg)}`).join(' · '), '', ''),
-      ov('Morning → evening', c.swing === null ? '—' : sgn(c.swing), p.swing === null ? '—' : sgn(p.swing), cmpCls(c.swing, p.swing, 1)),
       ov('Avg sleep (hrs)', f1(c.sleep), f1(p.sleep), cmpCls(c.sleep, p.sleep, 1)),
       ov('Drink / smoke days', c.drink, p.drink, cmpCls(c.drink, p.drink, -1)),
       ov('…to cope', c.cope, p.cope, cmpCls(c.cope, p.cope, -1)),
@@ -1183,12 +1202,14 @@
 
     const tod = [];
     if (A.lowest) tod.push(`Lowest check-in: ${A.lowest.id}`);
-    if (A.dipDays >= MIN_SIDE) tod.push(`Evening lower than midday on ${A.dips} of ${A.dipDays} days`);
+    if (c.liftN >= MIN_SIDE) tod.push(`Morning → midday: ${sgn(c.lift)} on average (${c.liftN} days)`);
+    if (c.dropN >= MIN_SIDE) tod.push(`Midday → evening: ${sgn(c.drop)} on average; evening lower on ${A.dips} of ${A.dipDays} days`);
 
     const allLinks = A.dayAfter.concat(A.helps);
     const shown = allLinks.filter(x => x.withN >= MIN_LINK && x.withoutN >= MIN_LINK)
       .sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap));
-    const linkLines = shown.map(x => `${x.label}: mood ${f1(x.withAvg)} vs ${f1(x.withoutAvg)} without, ${x.gap >= 0 ? 'higher' : 'lower'} by ${f1(Math.abs(x.gap))} (${x.withN} vs ${x.withoutN} days)`);
+    const linkLines = shown.map(x => `${x.label}: ${x.metric} ${f1(x.withAvg)} vs ${f1(x.withoutAvg)} otherwise` +
+      (x.range ? ` (range ${x.range[0]} vs ${x.range[1]})` : '') + `, ${x.gap >= 0 ? 'higher' : 'lower'} by ${f1(Math.abs(x.gap))} (${x.withN} vs ${x.withoutN} days)`);
 
     const r = insightFor(n);
     const ins = r && r.matches ? r.ins : null;
@@ -1211,12 +1232,12 @@
                        : `<div class="p-row"><span>${o.label}</span><span class="v ${o.cls}">${o.v}</span><span class="d">${o.pv}</span></div>`;
     });
     h += `</div>`;
-    if (R.flagLine) h += `<div class="p-block"><div class="p-title">Mood flags <span style="color:var(--ink-faint)">· days / check-ins</span></div><div class="p-line">${R.flagLine}</div></div>`;
+    if (R.flagLine) h += `<div class="p-block"><div class="p-title">Mood flags <span style="color:var(--ink-faint)">· flagged / check-ins</span></div><div class="p-line">${R.flagLine}</div></div>`;
     if (R.tod.length) h += `<div class="p-block"><div class="p-title">Time of day</div>${R.tod.map(l => `<div class="p-line">${l}</div>`).join('')}</div>`;
     h += `<div class="p-block"><div class="p-title">Mood links</div>`;
     if (R.linkLines.length) h += R.linkLines.map(l => `<div class="p-line">${l}</div>`).join('');
     const waiting = R.allLinks.filter(x => !(x.withN >= MIN_LINK && x.withoutN >= MIN_LINK) && x.withN + x.withoutN > 0);
-    if (waiting.length) h += `<div class="p-line p-note">Shows once a link has ${MIN_LINK}+ days on each side. Building: ${waiting.map(x => `${x.label.replace('Day after ', 'after ')} ${x.withN}/${x.withoutN}`).join(' · ')}</div>`;
+    if (waiting.length) h += `<div class="p-line p-note">Shows once a link has ${MIN_LINK}+ days on each side. Building: ${waiting.map(x => `${x.label} ${x.withN}/${x.withoutN}`).join(' · ')}</div>`;
     h += `</div>`;
     h += `<div class="p-note" style="margin-top:0.9rem;">These are correlations, not causes. They get more reliable with more days logged.</div>`;
     out.innerHTML = h;
@@ -1315,9 +1336,9 @@
     $('insStatus').textContent = 'Summarizing your notes… this can take up to a minute.';
     try {
       await syncNow(); // make sure today's edits are in the sheet first
-      // every comparison with 3+ days per side goes to Claude to check against the notes, even ones not shown yet
-      const links = buildReport(n).allLinks.filter(x => x.ok).map(x => ({ label: x.label, withAvg: r1(x.withAvg), withoutAvg: r1(x.withoutAvg),
-        withDates: x.withDates, withoutDates: x.withoutDates }));
+      // comparisons with 3+ days per side and a gap of 0.5+ go to Claude to check against the notes, even ones not shown yet
+      const links = buildReport(n).allLinks.filter(x => x.ok && Math.abs(x.gap) >= 0.5).map(x => ({ label: x.label, metric: x.metric,
+        withAvg: r1(x.withAvg), withoutAvg: r1(x.withoutAvg), withDates: x.withDates, withoutDates: x.withoutDates }));
       const res = await fetch(url, { method: 'POST', body: JSON.stringify({ action: 'insights', from: dates[0], to: dates[dates.length - 1], days: n, links }) });
       const data = await res.json();
       if (!data || data.ok !== true) throw new Error((data && data.error) || 'Unexpected reply');
@@ -1343,7 +1364,7 @@
       ['PHQ-4', R.phqLines.concat(R.phqNote ? [R.phqNote] : [])],
       ['Flagged', R.watch],
       ['Overview', ovLines],
-      ['Mood flags (days flagged / check-in days)', R.flagLine ? [R.flagLine] : []],
+      ['Mood flags (check-ins flagged / check-ins)', R.flagLine ? [R.flagLine] : []],
       ['Time of day', R.tod],
       ['Mood links', R.linkLines],
       ['Notes insights', R.ins ? ['x'] : [], R.ins ? `<div class="ts-meta">${esc(insMeta)}</div>${mdLite(R.ins.text)}` : null],

@@ -207,8 +207,8 @@ function linksText_(links) {
   const ok = links.slice(0, 12).filter(l => l && typeof l.label === 'string' && Array.isArray(l.withDates) && Array.isArray(l.withoutDates));
   if (!ok.length) return '\n\nMood links: none with enough days yet.';
   const fmt = (ds) => ds.filter(d => /^\d{4}-\d{2}-\d{2}$/.test(String(d))).join(', ');
-  return '\n\nMood links (average daily mood 1-10, with vs without):\n' + ok.map(l =>
-    `- ${String(l.label).slice(0, 60)}: ${Number(l.withAvg)} with (${fmt(l.withDates)}) vs ${Number(l.withoutAvg)} without (${fmt(l.withoutDates)})`).join('\n');
+  return '\n\nMood links (average on days with vs without; mood is 1-10):\n' + ok.map(l =>
+    `- ${String(l.label).slice(0, 60)}, ${String(l.metric || 'mood').slice(0, 20)}: ${Number(l.withAvg)} with (${fmt(l.withDates)}) vs ${Number(l.withoutAvg)} without (${fmt(l.withoutDates)})`).join('\n');
 }
 
 function dayLine_(d, e) {
@@ -220,6 +220,9 @@ function dayLine_(d, e) {
   if (Number(n('drankSmoked')) === 1) parts.push('drank or smoked' + (Number(n('toCope')) === 1 ? ' (to cope)' : ''));
   if (Number(n('urgeResisted')) > 0) parts.push('urges resisted: ' + n('urgeResisted'));
   if (Number(n('kidsDay')) === 1) parts.push('kids with me');
+  if (n('careerHours') !== null) parts.push('career search: ' + n('careerHours') + ' hrs');
+  if (n('hoursDashed') !== null) parts.push('DoorDash: ' + n('hoursDashed') + ' hrs');
+  if (n('walks') !== null) parts.push('walks: ' + n('walks'));
   const flags = FLAGS.map(([k, label]) => {
     const on = SLOTS.filter(s => Number(n(k + s)) === 1);
     return on.length ? `${label} (${on.join('/').toLowerCase()})` : null;
@@ -234,7 +237,7 @@ const SYSTEM_PROMPT_ = [
   'You read a personal daily mood journal and write a short summary of insights for the person who wrote it.',
   'They may share it with their therapist. Write in plain language, in the second person ("you").',
   '',
-  'Use exactly these sections, each as a line starting with "## " followed by bullets starting with "- " (2-4 bullets, except one per link under Mood links vs. notes):',
+  'Use exactly these sections, each as a line starting with "## " followed by bullets starting with "- " (2-4 bullets in each section):',
   '## Recurring themes',
   '## Triggers',
   '## What helped',
@@ -242,11 +245,12 @@ const SYSTEM_PROMPT_ = [
   '## Worth raising in therapy',
   '## Mood links vs. notes',
   '',
-  'For "Mood links vs. notes": write one bullet per mood link given at the end of the entries (skip the section if there are none).',
-  'Each bullet states the link in a few words, then exactly one of these labels:',
-  '"Notes show another cause:" only when the notes on those dates name something else going on, and cite the dates;',
-  '"Possible explanation (a guess):" when nothing in the notes says so directly;',
-  '"Can\'t tell from the notes."',
+  'For "Mood links vs. notes": use the mood links listed at the end of the entries. Write a bullet only for a link',
+  'where the notes or the other daily data explain it or add something; skip the rest, and leave out the whole section if none qualify.',
+  'Never write that you cannot tell. Check whether links overlap (the same days driving two links) and say so when one likely explains another.',
+  'Each bullet states the link in a few words, then one of these labels:',
+  '"Notes show another cause:" only when the notes or data on those dates name something else going on, and cite the dates;',
+  '"Possible explanation (a guess):" when nothing says so directly.',
   'Never state a cause without one of these labels. These comparisons cover only a few days.',
   '',
   'Rules:',
