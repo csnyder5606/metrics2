@@ -1087,7 +1087,7 @@
         const first = firstSeen(slotKeys(f.key));
         const pool = first === null ? [] : checkins.filter(d => d >= first);
         const slots = pool.flatMap(d => checkinSlots(d).map(sl => [d, sl]));
-        return { key: f.key, label: f.label, n: slots.filter(([d, sl]) => Number(entries[d][f.key + sl]) === 1).length, of: slots.length };
+        return { key: f.key, label: f.label, n: slots.filter(([d, sl]) => Number(entries[d][f.key + sl]) === 1).length, of: slots.length, days: pool.length };
       }),
     };
   }
@@ -1198,7 +1198,9 @@
       const pf = p.flags.find(x => x.key === f.key);
       const pOk = pf && pf.of >= MIN_SIDE;
       const better = f.key === 'feltConnected' ? 1 : -1;
-      return { label: f.label, v: `${f.n}/${f.of}`, pv: pOk ? `${pf.n}/${pf.of}` : '—',
+      const pct = (a, b) => `${Math.round(a / b * 100)}%`;
+      return { label: f.label, v: pct(f.n, f.of), pv: pOk ? pct(pf.n, pf.of) : '—',
+               basis: `${f.n} of ${f.of} check-ins, ${f.days} day${f.days === 1 ? '' : 's'}`,
                cls: pOk ? cmpCls(f.n / f.of, pf.n / pf.of, better) : '' };
     });
 
@@ -1233,8 +1235,8 @@
     });
     h += `</div>`;
     if (R.flagRows.length) {
-      h += `<div class="p-block"><div class="p-title">Mood flags <span style="color:var(--ink-faint)">· flagged / check-ins</span></div>`;
-      R.flagRows.forEach(o => { h += `<div class="p-row"><span>${o.label}</span><span class="v ${o.cls}">${o.v}</span><span class="d">${o.pv}</span></div>`; });
+      h += `<div class="p-block"><div class="p-title">Mood flags <span style="color:var(--ink-faint)">· % of check-ins</span></div>`;
+      R.flagRows.forEach(o => { h += `<div class="p-row"><span>${o.label}<div class="p-note">${o.basis}</div></span><span class="v ${o.cls}">${o.v}</span><span class="d">${o.pv}</span></div>`; });
       h += `</div>`;
     }
     if (R.tod.length) h += `<div class="p-block"><div class="p-title">Time of day</div>${R.tod.map(l => `<div class="p-line">${l}</div>`).join('')}</div>`;
@@ -1362,7 +1364,7 @@
       ['PHQ-4', R.phqLines.concat(R.phqNote ? [R.phqNote] : [])],
       ['Mood Check-In Flags', R.watch],
       ['Overview', ovLines],
-      ['Mood flags (check-ins flagged / check-ins)', R.flagRows.map(o => `${o.label}: ${o.v}` + (o.pv !== '—' ? ` (prior ${R.A.n} days: ${o.pv})` : ''))],
+      ['Mood flags (% of check-ins)', R.flagRows.map(o => `${o.label}: ${o.v} (${o.basis})` + (o.pv !== '—' ? `; prior ${R.A.n} days: ${o.pv}` : ''))],
       ['Time of day', R.tod],
       ['Notes insights', R.ins ? ['x'] : [], R.ins ? `<div class="ts-meta">${esc(insMeta)}</div>${mdLite(R.ins.text)}` : null],
     ].filter(sec => sec[1].length);
