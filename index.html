@@ -1076,6 +1076,7 @@
       .map(d => Number(entries[d]['mood' + b]) - Number(entries[d]['mood' + a]));
     const lifts = both('Morning', 'Midday'), drops = both('Midday', 'Evening');
     return {
+      slot: Object.fromEntries(SLOTS.map(sl => [sl.id, mean(dates.map(d => entries[d] && entries[d]['mood' + sl.id]).filter(isNum).map(Number))])),
       lift: mean(lifts), liftN: lifts.length, drop: mean(drops), dropN: drops.length,
       days: dates.length, logged: logged.length, checkins: checkins.length,
       mood: mean(allMoods), swing: mean(swings), swingN: swings.length,
@@ -1187,16 +1188,13 @@
     const ov = (label, v, pv, cls) => ({ label, v: String(v), pv: priorOk ? String(pv) : '—', cls: priorOk ? cls : '' });
     const overview = [
       ov('Days logged', `${c.logged}/${c.days}`, `${p.logged}/${p.days}`, cmpCls(c.logged, p.logged, 1)),
-      ov('Avg mood', f1(c.mood), f1(p.mood), cmpCls(c.mood, p.mood, 1)),
-      ov('Mood by check-in', A.slotAvg.map(sl => `${sl.id} ${f1(sl.avg)}`).join(' · '), '', ''),
+      ov('Avg mood (overall)', f1(c.mood), f1(p.mood), cmpCls(c.mood, p.mood, 1)),
+      ...SLOTS.map(sl => ov(`Avg mood (${sl.id.toLowerCase()})`, f1(c.slot[sl.id]), f1(p.slot[sl.id]), cmpCls(c.slot[sl.id], p.slot[sl.id], 1))),
       ov('Avg sleep (hrs)', f1(c.sleep), f1(p.sleep), cmpCls(c.sleep, p.sleep, 1)),
       ov('Drink / smoke days', c.drink, p.drink, cmpCls(c.drink, p.drink, -1)),
       ov('…to cope', c.cope, p.cope, cmpCls(c.cope, p.cope, -1)),
-      ov('Urges resisted', c.urges, p.urges, ''),
       ov('Career / DoorDash hrs', `${r1(c.career)} / ${r1(c.dash)}`, `${r1(p.career)} / ${r1(p.dash)}`, ''),
     ];
-    overview[2].pv = '';
-    overview[2].short = true; // card shows just "Morning 3.9 · Midday 5.9 · Evening 5.1" so it fits one phone line
 
     const flags = c.flags.filter(f => f.of).sort((a, b) => (b.n / b.of) - (a.n / a.of));
     const flagLine = flags.length ? flags.map(f => `${f.label} ${f.n}/${f.of}`).join(' · ') : '';
@@ -1228,18 +1226,11 @@
     h += `<div class="p-block"><div class="p-title">Overview</div>
       <div class="p-row p-head"><span></span><span>This period</span><span>Prior ${R.A.n}d</span></div>`;
     R.overview.forEach(o => {
-      // a row with no prior value is a full-width line, so long values don't squeeze the label
-      h += o.pv === '' ? `<div class="p-line">${o.short ? '' : o.label + ': '}<b>${o.v}</b></div>`
-                       : `<div class="p-row"><span>${o.label}</span><span class="v ${o.cls}">${o.v}</span><span class="d">${o.pv}</span></div>`;
+      h += `<div class="p-row"><span>${o.label}</span><span class="v ${o.cls}">${o.v}</span><span class="d">${o.pv}</span></div>`;
     });
     h += `</div>`;
     if (R.flagLine) h += `<div class="p-block"><div class="p-title">Mood flags <span style="color:var(--ink-faint)">· flagged / check-ins</span></div><div class="p-line">${R.flagLine}</div></div>`;
     if (R.tod.length) h += `<div class="p-block"><div class="p-title">Time of day</div>${R.tod.map(l => `<div class="p-line">${l}</div>`).join('')}</div>`;
-    h += `<div class="p-block"><div class="p-title">Mood links</div>`;
-    if (R.linkLines.length) h += R.linkLines.map(l => `<div class="p-line">${l}</div>`).join('');
-    const waiting = R.allLinks.filter(x => !(x.withN >= MIN_LINK && x.withoutN >= MIN_LINK) && x.withN + x.withoutN > 0);
-    if (waiting.length) h += `<div class="p-line p-note">Shows once a link has ${MIN_LINK}+ days on each side. Building: ${waiting.map(x => `${x.label} ${x.withN}/${x.withoutN}`).join(' · ')}</div>`;
-    h += `</div>`;
     h += `<div class="p-note" style="margin-top:0.9rem;">These are correlations, not causes. They get more reliable with more days logged.</div>`;
     out.innerHTML = h;
   }
@@ -1367,7 +1358,6 @@
       ['Overview', ovLines],
       ['Mood flags (check-ins flagged / check-ins)', R.flagLine ? [R.flagLine] : []],
       ['Time of day', R.tod],
-      ['Mood links', R.linkLines],
       ['Notes insights', R.ins ? ['x'] : [], R.ins ? `<div class="ts-meta">${esc(insMeta)}</div>${mdLite(R.ins.text)}` : null],
     ].filter(sec => sec[1].length);
     const foot = 'Self-tracked daily log. Comparisons are correlations, not causes.';
