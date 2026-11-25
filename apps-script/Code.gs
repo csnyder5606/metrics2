@@ -13,7 +13,7 @@ const SHEET = 'Entries';
 const PHQ_SHEET = 'PHQ4';
 const PHQ_HEAD = ['id', 'timestamp', 'date', 'q1', 'q2', 'q3', 'q4', 'anxiety', 'depression', 'total'];
 const INS_SHEET = 'Insights';
-const INS_HEAD = ['created', 'from', 'to', 'days', 'model', 'text'];
+const INS_HEAD = ['created', 'from', 'to', 'days', 'model', 'text', 'stop_reason', 'input_tokens', 'output_tokens'];
 const MODEL = 'claude-sonnet-5-5';
 const SLOTS = ['Morning', 'Midday', 'Evening'];
 const FLAGS = [['irritability', 'irritability'], ['cravingConnection', 'craving connection'], ['feltConnected', 'felt connected'],
@@ -119,6 +119,8 @@ function tab_(name, head) {
     sh.getRange(1, 1, 1, head.length).setValues([head]);
     sh.setFrozenRows(1);
     sh.getRange('A:C').setNumberFormat('@');
+  } else if (sh.getLastColumn() < head.length) {
+    sh.getRange(1, 1, 1, head.length).setValues([head]); // header grew in a script update
   }
   return sh;
 }
@@ -171,7 +173,7 @@ function insights_(body) {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
     payload: JSON.stringify({
-      model: MODEL, max_tokens: 1200, system: SYSTEM_PROMPT_,
+      model: MODEL, max_tokens: 8000, system: SYSTEM_PROMPT_,
       messages: [{ role: 'user', content: `Journal entries from ${from} to ${to} (${dates.length} days logged):\n\n${lines.join('\n\n')}` }],
     }),
   });
@@ -183,12 +185,16 @@ function insights_(body) {
     return { ok: false, error: 'Claude API error: ' + msg };
   }
   const text = data.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+  const usage = data.usage || {};
+  if (data.stop_reason === 'max_tokens' || !text) {
+    return { ok: false, error: 'The summary came back incomplete (' + (data.stop_reason || 'empty') + '). Try again or a shorter range.' };
+  }
   const created = new Date().toISOString();
 
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    tab_(INS_SHEET, INS_HEAD).appendRow([created, from, to, days, MODEL, "'" + text]);
+    tab_(INS_SHEET, INS_HEAD).appendRow([created, from, to, days, MODEL, "'" + text, String(data.stop_reason || ''), usage.input_tokens || '', usage.output_tokens || '']);
   } finally {
     lock.releaseLock();
   }
