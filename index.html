@@ -1196,6 +1196,7 @@
       ov('Career / DoorDash hrs', `${r1(c.career)} / ${r1(c.dash)}`, `${r1(p.career)} / ${r1(p.dash)}`, ''),
     ];
     overview[2].pv = '';
+    overview[2].short = true; // card shows just "Morning 3.9 · Midday 5.9 · Evening 5.1" so it fits one phone line
 
     const flags = c.flags.filter(f => f.of).sort((a, b) => (b.n / b.of) - (a.n / a.of));
     const flagLine = flags.length ? flags.map(f => `${f.label} ${f.n}/${f.of}`).join(' · ') : '';
@@ -1228,7 +1229,7 @@
       <div class="p-row p-head"><span></span><span>This period</span><span>Prior ${R.A.n}d</span></div>`;
     R.overview.forEach(o => {
       // a row with no prior value is a full-width line, so long values don't squeeze the label
-      h += o.pv === '' ? `<div class="p-line">${o.label}: <b>${o.v}</b></div>`
+      h += o.pv === '' ? `<div class="p-line">${o.short ? '' : o.label + ': '}<b>${o.v}</b></div>`
                        : `<div class="p-row"><span>${o.label}</span><span class="v ${o.cls}">${o.v}</span><span class="d">${o.pv}</span></div>`;
     });
     h += `</div>`;
