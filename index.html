@@ -362,7 +362,7 @@
   .p-block { border-top: 1px solid var(--line); padding-top: 0.8rem; margin-top: 0.9rem; }
   .p-title { font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); margin-bottom: 0.5rem; }
   .p-row { display: grid; grid-template-columns: 1fr auto auto; gap: 0.7rem; align-items: baseline; font-size: 0.85rem; color: var(--ink-dim); padding: 0.28rem 0; }
-  .p-row .v { font-family: var(--mono); color: var(--ink); text-align: right; }
+  .p-row .v { font-family: var(--mono); color: var(--ink); text-align: right; white-space: nowrap; }
   .p-row .d { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-faint); min-width: 4.2rem; text-align: right; }
   .p-row .v.better { color: var(--teal); }
   .p-row .v.worse { color: var(--rust); }
@@ -373,7 +373,7 @@
   .p-watch { background: rgba(201, 151, 63, 0.12); border: 1px solid var(--gold-dim); color: #e6c98f; border-radius: 7px; padding: 0.55rem 0.7rem; font-size: 0.82rem; line-height: 1.5; margin-top: 0.9rem; }
   .p-actions { margin-top: 1rem; display: flex; gap: 0.6rem; flex-wrap: wrap; }
 
-  /* --- therapist summary overlay --- */
+  /* --- shareable summary overlay --- */
   #tsOverlay { position: fixed; inset: 0; z-index: 50; background: #fff; color: #1a1a1a; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   #tsOverlay[hidden] { display: none; }
   .ts-bar { position: sticky; top: 0; background: #f3f1ec; border-bottom: 1px solid #ddd; padding: 0.7rem 1rem; display: flex; gap: 0.5rem; justify-content: flex-end; }
@@ -462,7 +462,7 @@
         <div class="p-note" id="insStatus" style="margin-top:0.5rem;"></div>
       </div>
       <div class="p-actions">
-        <button class="ghost" id="tsOpenBtn">Therapist summary</button>
+        <button class="ghost" id="tsOpenBtn">Shareable summary</button>
       </div>
     </div>
   </section>
@@ -1036,6 +1036,7 @@
   const PAT_RANGE_KEY = 'ledger_assess_range';
   const MIN_SIDE = 3;   // days needed on each side of a comparison
   const MIN_WATCH = 5;  // check-in days needed before the watch flag can show
+  const MIN_LINK = 7;   // days on each side before a mood link is shown
 
   function rangeDates(n, offset) { // n days ending (offset) days before today
     const out = [];
@@ -1087,10 +1088,11 @@
 
   function compare(dates, label, test, eligible) {
     const pool = dates.filter(d => dayMood(d) !== null && (!eligible || eligible(d)));
-    const yes = pool.filter(test).map(dayMood), no = pool.filter(d => !test(d)).map(dayMood);
+    const yesD = pool.filter(test), noD = pool.filter(d => !test(d));
+    const yes = yesD.map(dayMood), no = noD.map(dayMood);
     const ok = yes.length >= MIN_SIDE && no.length >= MIN_SIDE;
     return { label, ok, withN: yes.length, withoutN: no.length, withAvg: mean(yes), withoutAvg: mean(no),
-             gap: ok ? mean(yes) - mean(no) : null };
+             gap: ok ? mean(yes) - mean(no) : null, withDates: yesD, withoutDates: noD };
   }
 
   function analyze(n) {
@@ -1141,56 +1143,81 @@
     return (a > b) === (better > 0) ? 'better' : 'worse';
   }
 
+  // One report feeds both the in-app card and the shareable summary, so they always match.
+  function buildReport(n) {
+    const A = analyze(n);
+    const c = A.cur, p = A.prev;
+    const first = A.dates[0], last = A.dates[A.dates.length - 1];
+    const priorOk = p.checkins >= MIN_SIDE;
+
+    const takes = allPhq4();
+    const inRange = takes.filter(t => t.date >= first && t.date <= last);
+    const phqLines = inRange.map(phqLine);
+    if (!inRange.length && takes.length) phqLines.push('Most recent, before this range: ' + phqLine(takes[takes.length - 1]));
+    const ref = inRange.length ? inRange[inRange.length - 1] : takes[takes.length - 1];
+    let phqNote = '';
+    if (ref) {
+      const sc = phqScore(ref);
+      const pos = [sc.anx >= 3 ? 'anxiety' : null, sc.dep >= 3 ? 'depression' : null].filter(Boolean);
+      if (pos.length) phqNote = pos.length === 2 ? 'Latest anxiety and depression scores are both 3 or higher, a positive screen on each.' : `Latest ${pos[0]} score is 3 or higher, a positive screen.`;
+    }
+
+    const watch = A.watch.map(f => `${f.label} flagged on ${f.n} of ${f.of} check-in days.`);
+
+    const ov = (label, v, pv, cls) => ({ label, v: String(v), pv: priorOk ? String(pv) : '—', cls: priorOk ? cls : '' });
+    const overview = [
+      ov('Days logged', `${c.logged}/${c.days}`, `${p.logged}/${p.days}`, cmpCls(c.logged, p.logged, 1)),
+      ov('Avg mood', f1(c.mood), f1(p.mood), cmpCls(c.mood, p.mood, 1)),
+      ov('Mood by check-in', A.slotAvg.map(sl => `${sl.id} ${f1(sl.avg)}`).join(' · '), '', ''),
+      ov('Morning → evening', c.swing === null ? '—' : sgn(c.swing), p.swing === null ? '—' : sgn(p.swing), cmpCls(c.swing, p.swing, 1)),
+      ov('Avg sleep (hrs)', f1(c.sleep), f1(p.sleep), cmpCls(c.sleep, p.sleep, 1)),
+      ov('Drink / smoke days', c.drink, p.drink, cmpCls(c.drink, p.drink, -1)),
+      ov('…to cope', c.cope, p.cope, cmpCls(c.cope, p.cope, -1)),
+      ov('Urges resisted', c.urges, p.urges, ''),
+      ov('Career / DoorDash hrs', `${r1(c.career)} / ${r1(c.dash)}`, `${r1(p.career)} / ${r1(p.dash)}`, ''),
+    ];
+    overview[2].pv = '';
+
+    const flags = c.flags.filter(f => f.of).sort((a, b) => (b.n / b.of) - (a.n / a.of));
+    const flagLine = flags.length ? flags.map(f => `${f.label} ${f.n}/${f.of}`).join(' · ') : '';
+
+    const tod = [];
+    if (A.lowest) tod.push(`Lowest check-in: ${A.lowest.id}`);
+    if (A.dipDays >= MIN_SIDE) tod.push(`Evening lower than midday on ${A.dips} of ${A.dipDays} days`);
+
+    const allLinks = A.dayAfter.concat(A.helps);
+    const shown = allLinks.filter(x => x.withN >= MIN_LINK && x.withoutN >= MIN_LINK)
+      .sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap));
+    const linkLines = shown.map(x => `${x.label}: mood ${f1(x.withAvg)} vs ${f1(x.withoutAvg)} without, ${x.gap >= 0 ? 'higher' : 'lower'} by ${f1(Math.abs(x.gap))} (${x.withN} vs ${x.withoutN} days)`);
+
+    const r = insightFor(n);
+    const ins = r && r.matches ? r.ins : null;
+    return { A, first, last, priorOk, phqLines, phqNote, watch, overview, flagLine, tod, linkLines, allLinks, ins };
+  }
+
   function renderPatterns() {
     const out = $('patternsOut');
     if (!out || $('patternsBody').hidden) return;
-    renderPhq();
+    const R = buildReport(Number($('assessRange').value));
+    renderPhq(R);
     renderInsight();
-    const A = analyze(Number($('assessRange').value));
-    const c = A.cur, p = A.prev;
-    const row = (label, v, pv, cls) => `<div class="p-row"><span>${label}</span><span class="v ${cls}">${v}</span><span class="d">${pv}</span></div>`;
-    // prior period only counts if it has enough check-in days to compare against
-    const priorOk = p.checkins >= MIN_SIDE;
-    const pv = (v) => priorOk ? v : '—';
-    const pc = (a, b, better) => priorOk ? cmpCls(a, b, better) : '';
-    const rate = (n, of) => of ? n / of : null;
-
-    let h = `<div class="p-block"><div class="p-title">Overview</div>
-      <div class="p-row p-head"><span></span><span>This period</span><span>Prior ${A.n}d</span></div>`;
-    h += row('Days logged', `${c.logged}/${c.days}`, `${p.logged}/${p.days}`, cmpCls(c.logged, p.logged, 1));
-    h += row('Avg mood', f1(c.mood), pv(f1(p.mood)), pc(c.mood, p.mood, 1));
-    h += row('Morning → evening', c.swing === null ? '—' : sgn(c.swing), pv(p.swing === null ? '—' : sgn(p.swing)), pc(c.swing, p.swing, 1));
-    h += row('Avg sleep', f1(c.sleep), pv(f1(p.sleep)), pc(c.sleep, p.sleep, 1));
-    h += row('Drink / smoke days', c.drink, pv(p.drink), pc(c.drink, p.drink, -1));
-    h += row('…to cope', c.cope, pv(p.cope), pc(c.cope, p.cope, -1));
-    h += row('Urges resisted', c.urges, pv(p.urges), '');
-    h += `</div>`;
-
-    h += `<div class="p-block"><div class="p-title">Mood flags <span style="color:var(--ink-faint)">· days / check-ins</span></div>`;
-    c.flags.forEach((f, i) => {
-      const pf = p.flags[i];
-      const better = f.key === 'feltConnected' ? 1 : -1;
-      h += row(f.label, f.of ? `${f.n}/${f.of}` : '—', pf.of >= MIN_SIDE ? `${pf.n}/${pf.of}` : '—',
-               pf.of >= MIN_SIDE ? cmpCls(rate(f.n, f.of), rate(pf.n, pf.of), better) : '');
+    let h = '';
+    if (R.watch.length) h += `<div class="p-block"><div class="p-title">Flagged</div>${R.watch.map(w => `<div class="p-watch" style="margin-top:0.4rem;">${esc(w)}</div>`).join('')}</div>`;
+    h += `<div class="p-block"><div class="p-title">Overview</div>
+      <div class="p-row p-head"><span></span><span>This period</span><span>Prior ${R.A.n}d</span></div>`;
+    R.overview.forEach(o => {
+      // a row with no prior value is a full-width line, so long values don't squeeze the label
+      h += o.pv === '' ? `<div class="p-line">${o.label}: <b>${o.v}</b></div>`
+                       : `<div class="p-row"><span>${o.label}</span><span class="v ${o.cls}">${o.v}</span><span class="d">${o.pv}</span></div>`;
     });
     h += `</div>`;
-
-    const cmpLines = (list) => list.map(x => x.ok
-      ? `<div class="p-line">${x.label}: mood <b>${f1(x.withAvg)}</b> vs <b>${f1(x.withoutAvg)}</b> without <span class="p-note">(${x.withN} vs ${x.withoutN} days, ${sgn(x.gap)})</span></div>`
-      : `<div class="p-line p-note">${x.label}: not enough data yet (${x.withN} with, ${x.withoutN} without; needs ${MIN_SIDE} each)</div>`).join('');
-
-    h += `<div class="p-block"><div class="p-title">The day after</div>${cmpLines(A.dayAfter)}</div>`;
-    h += `<div class="p-block"><div class="p-title">Mood links</div>${cmpLines(A.helps)}</div>`;
-
-    h += `<div class="p-block"><div class="p-title">Time of day</div>`;
-    h += `<div class="p-line">${A.slotAvg.map(s => `${s.id} <b>${f1(s.avg)}</b>`).join(' · ')}</div>`;
-    if (A.lowest) h += `<div class="p-line">Lowest check-in: <b>${A.lowest.id}</b></div>`;
-    if (A.dipDays >= MIN_SIDE) h += `<div class="p-line">Evening lower than midday on <b>${A.dips} of ${A.dipDays}</b> days</div>`;
+    if (R.flagLine) h += `<div class="p-block"><div class="p-title">Mood flags <span style="color:var(--ink-faint)">· days / check-ins</span></div><div class="p-line">${R.flagLine}</div></div>`;
+    if (R.tod.length) h += `<div class="p-block"><div class="p-title">Time of day</div>${R.tod.map(l => `<div class="p-line">${l}</div>`).join('')}</div>`;
+    h += `<div class="p-block"><div class="p-title">Mood links</div>`;
+    if (R.linkLines.length) h += R.linkLines.map(l => `<div class="p-line">${l}</div>`).join('');
+    const waiting = R.allLinks.filter(x => !(x.withN >= MIN_LINK && x.withoutN >= MIN_LINK) && x.withN + x.withoutN > 0);
+    if (waiting.length) h += `<div class="p-line p-note">Shows once a link has ${MIN_LINK}+ days on each side. Building: ${waiting.map(x => `${x.label.replace('Day after ', 'after ')} ${x.withN}/${x.withoutN}`).join(' · ')}</div>`;
     h += `</div>`;
-
-    A.watch.forEach(f => {
-      h += `<div class="p-watch">${f.label} was flagged on ${f.n} of ${f.of} check-in days. That's worth raising with a doctor or therapist.</div>`;
-    });
     h += `<div class="p-note" style="margin-top:0.9rem;">These are correlations, not causes. They get more reliable with more days logged.</div>`;
     out.innerHTML = h;
   }
@@ -1214,19 +1241,12 @@
     const s = phqScore(t);
     return `${fmtD(t.date)}: ${s.total}/12 (${s.sev}) · anxiety ${s.anx}/6 · depression ${s.dep}/6`;
   }
-  function renderPhq() {
-    const takes = allPhq4();
+  function renderPhq(R) {
     const pendingN = lsJson(PHQ_PENDING_KEY, []).length;
-    let h = `<div class="p-title">PHQ-4 check-in</div>`;
-    if (!takes.length) {
-      h += `<div class="p-line p-note">No check-ins yet. Take one any time; it covers the last 2 weeks.</div>`;
-    } else {
-      const last = takes[takes.length - 1], s = phqScore(last);
-      h += `<div class="p-line">Latest (${fmtD(last.date)}): <b>${s.total}/12</b> · ${s.sev} · anxiety <b>${s.anx}</b> · depression <b>${s.dep}</b></div>`;
-      if (takes.length > 1) h += `<div class="p-line p-note">Trend: ${takes.slice(-6).map(t => `${fmtD(t.date)} ${phqScore(t).total}`).join(' → ')}</div>`;
-      const pos = [s.anx >= 3 ? 'anxiety' : null, s.dep >= 3 ? 'depression' : null].filter(Boolean);
-      if (pos.length) h += `<div class="p-watch">Latest ${pos.join(' and ')} score is 3 or higher, a positive screen. Worth discussing with a doctor or therapist.</div>`;
-    }
+    let h = `<div class="p-title">PHQ-4</div>`;
+    h += R.phqLines.length ? R.phqLines.map(l => `<div class="p-line">${esc(l)}</div>`).join('')
+                           : `<div class="p-line p-note">No check-ins yet. Take one any time; it covers the last 2 weeks.</div>`;
+    if (R.phqNote) h += `<div class="p-watch">${esc(R.phqNote)}</div>`;
     if (pendingN) h += `<div class="p-line p-note">${pendingN} check-in(s) saved here, not yet in the sheet.</div>`;
     h += `<div class="p-actions"><button class="ghost" id="phqOpenBtn">Take PHQ-4</button></div>`;
     $('phqBlock').innerHTML = h;
@@ -1295,7 +1315,10 @@
     $('insStatus').textContent = 'Summarizing your notes… this can take up to a minute.';
     try {
       await syncNow(); // make sure today's edits are in the sheet first
-      const res = await fetch(url, { method: 'POST', body: JSON.stringify({ action: 'insights', from: dates[0], to: dates[dates.length - 1], days: n }) });
+      // every comparison with 3+ days per side goes to Claude to check against the notes, even ones not shown yet
+      const links = buildReport(n).allLinks.filter(x => x.ok).map(x => ({ label: x.label, withAvg: r1(x.withAvg), withoutAvg: r1(x.withoutAvg),
+        withDates: x.withDates, withoutDates: x.withoutDates }));
+      const res = await fetch(url, { method: 'POST', body: JSON.stringify({ action: 'insights', from: dates[0], to: dates[dates.length - 1], days: n, links }) });
       const data = await res.json();
       if (!data || data.ok !== true) throw new Error((data && data.error) || 'Unexpected reply');
       if (!data.insight) throw new Error('Your Apps Script needs the update before this can run.');
@@ -1310,69 +1333,41 @@
     }
   }
 
-  // --- therapist summary ---
-  function buildTherapistSummary() {
-    const A = analyze(Number($('assessRange').value));
-    const c = A.cur;
-    const first = A.dates[0], last = A.dates[A.dates.length - 1];
-    const range = `${fmtD(first)} – ${fmtD(last)}`;
-    const okList = (list) => list.filter(x => x.ok);
-    const lines = { overview: [], phq: [], flags: [], after: [], helps: [], tod: [] };
-
-    const takes = allPhq4();
-    const inRange = takes.filter(t => t.date >= first && t.date <= last);
-    inRange.forEach(t => lines.phq.push(phqLine(t)));
-    if (!inRange.length && takes.length) lines.phq.push('Most recent, before this range: ' + phqLine(takes[takes.length - 1]));
-
-    lines.overview.push(`Days logged: ${c.logged} of ${c.days}`);
-    lines.overview.push(`Average mood (1–10): ${f1(c.mood)}`);
-    lines.overview.push(`Mood by check-in: ${A.slotAvg.map(s => `${s.id} ${f1(s.avg)}`).join(', ')}`);
-    if (c.swing !== null) lines.overview.push(`Average change morning → evening: ${sgn(c.swing)} (${c.swingN} days)`);
-    lines.overview.push(`Average sleep: ${f1(c.sleep)} hrs`);
-    lines.overview.push(`Drink / smoke days: ${c.drink} (to cope: ${c.cope}); urges resisted: ${c.urges}`);
-    lines.overview.push(`Career search: ${r1(c.career)} hrs · DoorDash: ${r1(c.dash)} hrs`);
-    c.flags.filter(f => f.of).forEach(f => lines.flags.push(`${f.label}: ${f.n} of ${f.of} check-in days`));
-    okList(A.dayAfter).forEach(x => lines.after.push(`${x.label}: mood ${f1(x.withAvg)} vs ${f1(x.withoutAvg)} otherwise (${x.withN} vs ${x.withoutN} days)`));
-    okList(A.helps).forEach(x => lines.helps.push(`${x.label}: mood ${f1(x.withAvg)} with vs ${f1(x.withoutAvg)} without (${x.withN} vs ${x.withoutN} days)`));
-    if (A.lowest) lines.tod.push(`Lowest check-in: ${A.lowest.id}`);
-    if (A.dipDays >= MIN_SIDE) lines.tod.push(`Evening lower than midday on ${A.dips} of ${A.dipDays} days`);
-
-    const r = insightFor(A.n);
-    const ins = r && r.matches ? r.ins : null;
-    const insMeta = ins ? `Written summary of journal notes for ${fmtD(ins.from)} – ${fmtD(ins.to)}, generated ${fmtD(ins.created.slice(0, 10))}.` : '';
-
-    // [title, lines, optional html override]
+  // --- shareable summary (same content and order as the card) ---
+  function buildShareable() {
+    const R = buildReport(Number($('assessRange').value));
+    const range = `${fmtD(R.first)} – ${fmtD(R.last)}`;
+    const ovLines = R.overview.map(o => `${o.label}: ${o.v}` + (R.priorOk && o.pv ? ` (prior ${R.A.n} days: ${o.pv})` : ''));
+    const insMeta = R.ins ? `Written by Claude from the journal notes for ${fmtD(R.ins.from)} – ${fmtD(R.ins.to)}, generated ${fmtD(R.ins.created.slice(0, 10))}.` : '';
     const sections = [
-      ['PHQ-4', lines.phq], ['Overview', lines.overview],
-      ['Notes insights', ins ? ['x'] : [], ins ? `<div class="ts-meta">${esc(insMeta)}</div>${mdLite(ins.text)}` : null],
-      ['Mood flags', lines.flags], ['The day after', lines.after],
-      ['Mood links', lines.helps], ['Time of day', lines.tod],
-    ].filter(s => s[1].length);
-    const watch = A.watch.map(f => `${f.label} flagged on ${f.n} of ${f.of} check-in days.`);
-    const foot = 'Self-tracked daily log. Comparisons are correlations, not causes; each one needs at least 3 days on each side.' +
-      (ins ? ' Notes insights were written by an AI model from the journal text.' : '');
-
+      ['PHQ-4', R.phqLines.concat(R.phqNote ? [R.phqNote] : [])],
+      ['Flagged', R.watch],
+      ['Overview', ovLines],
+      ['Mood flags (days flagged / check-in days)', R.flagLine ? [R.flagLine] : []],
+      ['Time of day', R.tod],
+      ['Mood links', R.linkLines],
+      ['Notes insights', R.ins ? ['x'] : [], R.ins ? `<div class="ts-meta">${esc(insMeta)}</div>${mdLite(R.ins.text)}` : null],
+    ].filter(sec => sec[1].length);
+    const foot = 'Self-tracked daily log. Comparisons are correlations, not causes.';
     const html = `<h1>Mood &amp; habits summary</h1>
-      <div class="ts-meta">${A.n} days: ${range} · generated ${fmtD(todayStr())}</div>
-      ${watch.length ? `<h3>Flagged</h3><ul>${watch.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+      <div class="ts-meta">${R.A.n} days: ${range} · generated ${fmtD(todayStr())}</div>
       ${sections.map(([t, ls, raw]) => `<h3>${t}</h3>${raw || `<ul>${ls.map(l => `<li>${esc(l)}</li>`).join('')}</ul>`}`).join('')}
       <div class="ts-foot">${foot}</div>`;
-    const text = [`Mood & habits summary`, `${A.n} days: ${range}`, '',
-      ...(watch.length ? ['FLAGGED', ...watch.map(w => '- ' + w), ''] : []),
-      ...sections.flatMap(([t, ls, raw]) => raw ? [t.toUpperCase(), insMeta, mdPlain(ins.text), ''] : [t.toUpperCase(), ...ls.map(l => '- ' + l), '']),
+    const text = [`Mood & habits summary`, `${R.A.n} days: ${range}`, '',
+      ...sections.flatMap(([t, ls, raw]) => raw ? [t.toUpperCase(), insMeta, mdPlain(R.ins.text), ''] : [t.toUpperCase(), ...ls.map(l => '- ' + l), '']),
       foot].join('\n');
     return { html, text };
   }
   let tsText = '';
-  function openTherapistSummary() {
-    const s = buildTherapistSummary();
+  function openShareable() {
+    const s = buildShareable();
     $('tsPage').innerHTML = s.html;
     tsText = s.text;
     $('tsOverlay').hidden = false;
     $('tsOverlay').scrollTop = 0;
     document.body.style.overflow = 'hidden';
   }
-  function closeTherapistSummary() {
+  function closeShareable() {
     $('tsOverlay').hidden = true;
     document.body.style.overflow = '';
   }
@@ -1471,12 +1466,12 @@
       try { localStorage.setItem(PAT_RANGE_KEY, $('assessRange').value); } catch (e) {}
       renderPatterns();
     });
-    $('tsOpenBtn').addEventListener('click', openTherapistSummary);
+    $('tsOpenBtn').addEventListener('click', openShareable);
     $('insBtn').addEventListener('click', runInsights);
     $('phqCancelBtn').addEventListener('click', closePhq);
     $('phqSaveBtn').addEventListener('click', savePhq);
     $('phqQs').addEventListener('change', () => { $('phqSaveBtn').disabled = phqAnswers().some(a => a === null); });
-    $('tsCloseBtn').addEventListener('click', closeTherapistSummary);
+    $('tsCloseBtn').addEventListener('click', closeShareable);
     $('tsPrintBtn').addEventListener('click', () => window.print());
     $('tsShareBtn').addEventListener('click', async () => {
       try {

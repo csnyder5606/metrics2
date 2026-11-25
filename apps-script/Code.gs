@@ -174,7 +174,7 @@ function insights_(body) {
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
     payload: JSON.stringify({
       model: MODEL, max_tokens: 8000, system: SYSTEM_PROMPT_,
-      messages: [{ role: 'user', content: `Journal entries from ${from} to ${to} (${dates.length} days logged):\n\n${lines.join('\n\n')}` }],
+      messages: [{ role: 'user', content: `Journal entries from ${from} to ${to} (${dates.length} days logged):\n\n${lines.join('\n\n')}` + linksText_(body.links) }],
     }),
   });
   const code = res.getResponseCode();
@@ -201,6 +201,16 @@ function insights_(body) {
   return { ok: true, insight: { created, from, to, days, text } };
 }
 
+// Mood links computed in the app: average daily mood on days with vs without something, plus which dates.
+function linksText_(links) {
+  if (!Array.isArray(links) || !links.length) return '\n\nMood links: none with enough days yet.';
+  const ok = links.slice(0, 12).filter(l => l && typeof l.label === 'string' && Array.isArray(l.withDates) && Array.isArray(l.withoutDates));
+  if (!ok.length) return '\n\nMood links: none with enough days yet.';
+  const fmt = (ds) => ds.filter(d => /^\d{4}-\d{2}-\d{2}$/.test(String(d))).join(', ');
+  return '\n\nMood links (average daily mood 1-10, with vs without):\n' + ok.map(l =>
+    `- ${String(l.label).slice(0, 60)}: ${Number(l.withAvg)} with (${fmt(l.withDates)}) vs ${Number(l.withoutAvg)} without (${fmt(l.withoutDates)})`).join('\n');
+}
+
 function dayLine_(d, e) {
   const n = (k) => (e[k] === '' || e[k] === undefined || e[k] === null) ? null : e[k];
   const parts = [d];
@@ -224,18 +234,26 @@ const SYSTEM_PROMPT_ = [
   'You read a personal daily mood journal and write a short summary of insights for the person who wrote it.',
   'They may share it with their therapist. Write in plain language, in the second person ("you").',
   '',
-  'Use exactly these sections, each as a line starting with "## " followed by 2-4 bullets starting with "- ":',
+  'Use exactly these sections, each as a line starting with "## " followed by bullets starting with "- " (2-4 bullets, except one per link under Mood links vs. notes):',
   '## Recurring themes',
   '## Triggers',
   '## What helped',
   '## Glimmers and mood',
   '## Worth raising in therapy',
+  '## Mood links vs. notes',
+  '',
+  'For "Mood links vs. notes": write one bullet per mood link given at the end of the entries (skip the section if there are none).',
+  'Each bullet states the link in a few words, then exactly one of these labels:',
+  '"Notes show another cause:" only when the notes on those dates name something else going on, and cite the dates;',
+  '"Possible explanation (a guess):" when nothing in the notes says so directly;',
+  '"Can\'t tell from the notes."',
+  'Never state a cause without one of these labels. These comparisons cover only a few days.',
   '',
   'Rules:',
   '- Ground every point in the entries and cite dates like (Nov 21). Do not invent details.',
   '- Separate what the entries show from your interpretation; mark interpretation with "possibly" or "seems".',
   '- No diagnoses or clinical labels the person did not use themselves. No moralizing, no pep talk, no generic advice.',
-  '- Keep it under 300 words. Be specific and direct.',
+  '- Keep it under 400 words. Be specific and direct.',
   '- If any entry mentions thoughts of self-harm or suicide, start with one line saying so and that the 988 Suicide & Crisis Lifeline (call or text 988) is available any time.',
 ].join('\n');
 
