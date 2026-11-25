@@ -218,7 +218,6 @@ function dayLine_(d, e) {
   if (moods.length) parts.push('mood (1-10): ' + moods.join(', '));
   if (n('sleepHours') !== null) parts.push('sleep last night: ' + n('sleepHours') + ' hrs');
   if (Number(n('drankSmoked')) === 1) parts.push('drank or smoked' + (Number(n('toCope')) === 1 ? ' (to cope)' : ''));
-  if (Number(n('urgeResisted')) > 0) parts.push('urges resisted: ' + n('urgeResisted'));
   if (Number(n('kidsDay')) === 1) parts.push('kids with me');
   if (n('careerHours') !== null) parts.push('career search: ' + n('careerHours') + ' hrs');
   if (n('hoursDashed') !== null) parts.push('DoorDash: ' + n('hoursDashed') + ' hrs');

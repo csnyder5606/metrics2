@@ -415,7 +415,7 @@
 
 <header>
   <p class="eyebrow">Daily Ledger · Phase 1: Stabilize</p>
-  <h1>By the Numbers</h1>
+  <h1>Mood and Goal Journal</h1>
   <p class="streak-line" id="streakLine">—</p>
 </header>
 
@@ -445,6 +445,11 @@
       <h2>Summary &amp; Patterns</h2><span class="chev">▼</span>
     </button>
     <div id="patternsBody" hidden>
+      <div class="p-actions" style="margin-top:0;margin-bottom:0.9rem;">
+        <button class="ghost" id="insBtn">Summarize</button>
+        <button class="ghost" id="tsOpenBtn">Share summary</button>
+      </div>
+      <div class="p-note" id="insStatus" style="margin:-0.4rem 0 0.8rem;"></div>
       <div class="field">
         <label for="assessRange">Assess range</label>
         <select id="assessRange">
@@ -458,11 +463,6 @@
       <div class="p-block">
         <div class="p-title">Notes insights</div>
         <div class="ins-out" id="insOut"></div>
-        <div class="p-actions"><button class="ghost" id="insBtn">Summarize my notes</button></div>
-        <div class="p-note" id="insStatus" style="margin-top:0.5rem;"></div>
-      </div>
-      <div class="p-actions">
-        <button class="ghost" id="tsOpenBtn">Shareable summary</button>
       </div>
     </div>
   </section>
@@ -562,7 +562,6 @@
     { section: 'Drinking / smoking' },
     { key: 'drankSmoked',   label: 'Drank or smoked today', type: 'check', agg: 'sum', trend: true, color: '#a85c48', col: 'Drank' },
     { key: 'toCope',        label: 'To cope / numb',        type: 'check', agg: 'sum', col: 'Cope' },
-    { key: 'urgeResisted',  label: 'Urges resisted', unit: 'count', type: 'num', step: 1, agg: 'sum', col: 'Urges' },
 
     { section: 'Mood journal' },
     { key: 'sleepHours',    label: 'Sleep last night', unit: 'hrs', type: 'num', step: 0.25, agg: 'avg', trend: true, color: '#4c8577', col: 'Sleep' },
@@ -901,7 +900,7 @@
     const drinkCard = `<div class="score ${dState}">
       <div class="s-label">Drink / smoke days</div>
       <div class="s-value">${drinkDays} <small>/ ${TARGETS.drinkDaysMax} max</small></div>
-      <div class="s-sub">${copeDays} to cope · ${sumOf(dates,'urgeResisted')} urges resisted</div>
+      <div class="s-sub">${copeDays} to cope</div>
       <div class="bar"><span style="width:${Math.min(100, drinkDays / TARGETS.drinkDaysMax * 100)}%"></span></div></div>`;
 
     const slotAvgs = SLOTS.map(sl => avgOf(elapsed, 'mood' + sl.id));
@@ -1032,7 +1031,6 @@
   }
 
   // --- summary & patterns ---
-  const PAT_OPEN_KEY = 'ledger_patterns_open';
   const PAT_RANGE_KEY = 'ledger_assess_range';
   const MIN_SIDE = 3;   // days needed on each side of a comparison
   const MIN_WATCH = 5;  // check-in days needed before the watch flag can show
@@ -1082,7 +1080,6 @@
       mood: mean(allMoods), swing: mean(swings), swingN: swings.length,
       drink: dates.filter(d => checkOn(d, 'drankSmoked')).length,
       cope: dates.filter(d => checkOn(d, 'toCope')).length,
-      urges: sumOf(dates, 'urgeResisted'),
       sleep: mean(sleeps),
       career: sumOf(dates, 'careerHours'), dash: sumOf(dates, 'hoursDashed'),
       // counted per check-in (up to 3 a day), only from the day this flag was added to the app
@@ -1197,7 +1194,13 @@
     ];
 
     const flags = c.flags.filter(f => f.of).sort((a, b) => (b.n / b.of) - (a.n / a.of));
-    const flagLine = flags.length ? flags.map(f => `${f.label} ${f.n}/${f.of}`).join(' · ') : '';
+    const flagRows = flags.map(f => {
+      const pf = p.flags.find(x => x.key === f.key);
+      const pOk = pf && pf.of >= MIN_SIDE;
+      const better = f.key === 'feltConnected' ? 1 : -1;
+      return { label: f.label, v: `${f.n}/${f.of}`, pv: pOk ? `${pf.n}/${pf.of}` : '—',
+               cls: pOk ? cmpCls(f.n / f.of, pf.n / pf.of, better) : '' };
+    });
 
     const tod = [];
     if (A.lowest) tod.push(`Lowest check-in: ${A.lowest.id}`);
@@ -1212,7 +1215,7 @@
 
     const r = insightFor(n);
     const ins = r && r.matches ? r.ins : null;
-    return { A, first, last, priorOk, phqLines, phqNote, watch, overview, flagLine, tod, linkLines, allLinks, ins };
+    return { A, first, last, priorOk, phqLines, phqNote, watch, overview, flagRows, tod, linkLines, allLinks, ins };
   }
 
   function renderPatterns() {
@@ -1222,14 +1225,18 @@
     renderPhq(R);
     renderInsight();
     let h = '';
-    if (R.watch.length) h += `<div class="p-block"><div class="p-title">Flagged</div>${R.watch.map(w => `<div class="p-watch" style="margin-top:0.4rem;">${esc(w)}</div>`).join('')}</div>`;
+    if (R.watch.length) h += `<div class="p-block"><div class="p-title">Mood Check-In Flags</div>${R.watch.map(w => `<div class="p-watch" style="margin-top:0.4rem;">${esc(w)}</div>`).join('')}</div>`;
     h += `<div class="p-block"><div class="p-title">Overview</div>
       <div class="p-row p-head"><span></span><span>This period</span><span>Prior ${R.A.n}d</span></div>`;
     R.overview.forEach(o => {
       h += `<div class="p-row"><span>${o.label}</span><span class="v ${o.cls}">${o.v}</span><span class="d">${o.pv}</span></div>`;
     });
     h += `</div>`;
-    if (R.flagLine) h += `<div class="p-block"><div class="p-title">Mood flags <span style="color:var(--ink-faint)">· flagged / check-ins</span></div><div class="p-line">${R.flagLine}</div></div>`;
+    if (R.flagRows.length) {
+      h += `<div class="p-block"><div class="p-title">Mood flags <span style="color:var(--ink-faint)">· flagged / check-ins</span></div>`;
+      R.flagRows.forEach(o => { h += `<div class="p-row"><span>${o.label}</span><span class="v ${o.cls}">${o.v}</span><span class="d">${o.pv}</span></div>`; });
+      h += `</div>`;
+    }
     if (R.tod.length) h += `<div class="p-block"><div class="p-title">Time of day</div>${R.tod.map(l => `<div class="p-line">${l}</div>`).join('')}</div>`;
     h += `<div class="p-note" style="margin-top:0.9rem;">These are correlations, not causes. They get more reliable with more days logged.</div>`;
     out.innerHTML = h;
@@ -1256,12 +1263,11 @@
   }
   function renderPhq(R) {
     const pendingN = lsJson(PHQ_PENDING_KEY, []).length;
-    let h = `<div class="p-title">PHQ-4</div>`;
+    let h = `<div class="p-title">PHQ-4</div><div class="p-actions" style="margin:0 0 0.5rem;"><button class="ghost" id="phqOpenBtn">Take PHQ-4</button></div>`;
     h += R.phqLines.length ? R.phqLines.map(l => `<div class="p-line">${esc(l)}</div>`).join('')
                            : `<div class="p-line p-note">No check-ins yet. Take one any time; it covers the last 2 weeks.</div>`;
     if (R.phqNote) h += `<div class="p-watch">${esc(R.phqNote)}</div>`;
     if (pendingN) h += `<div class="p-line p-note">${pendingN} check-in(s) saved here, not yet in the sheet.</div>`;
-    h += `<div class="p-actions"><button class="ghost" id="phqOpenBtn">Take PHQ-4</button></div>`;
     $('phqBlock').innerHTML = h;
     $('phqOpenBtn').addEventListener('click', openPhq);
   }
@@ -1312,9 +1318,9 @@
   function renderInsight() {
     const n = Number($('assessRange').value);
     const r = insightFor(n);
-    if (!r) { $('insOut').innerHTML = `<div class="p-note">No summary yet. It reads your notes and glimmers for the selected range.</div>`; return; }
+    if (!r) { $('insOut').innerHTML = `<div class="p-note">No summary yet. Tap Summarize to read your notes and glimmers for the selected range.</div>`; return; }
     const meta = `Generated ${fmtD(r.ins.created.slice(0, 10))} for ${fmtD(r.ins.from)} – ${fmtD(r.ins.to)}` +
-      (r.matches ? '' : ` (a ${r.ins.days}-day range; run again for the last ${n} days)`);
+      (r.matches ? '' : ` (a ${r.ins.days}-day range; tap Summarize for the last ${n} days)`);
     $('insOut').innerHTML = `<div class="p-note">${meta}</div>${mdLite(r.ins.text)}`;
   }
   let insRunning = false;
@@ -1354,9 +1360,9 @@
     const insMeta = R.ins ? `Written by Claude from the journal notes for ${fmtD(R.ins.from)} – ${fmtD(R.ins.to)}, generated ${fmtD(R.ins.created.slice(0, 10))}.` : '';
     const sections = [
       ['PHQ-4', R.phqLines.concat(R.phqNote ? [R.phqNote] : [])],
-      ['Flagged', R.watch],
+      ['Mood Check-In Flags', R.watch],
       ['Overview', ovLines],
-      ['Mood flags (check-ins flagged / check-ins)', R.flagLine ? [R.flagLine] : []],
+      ['Mood flags (check-ins flagged / check-ins)', R.flagRows.map(o => `${o.label}: ${o.v}` + (o.pv !== '—' ? ` (prior ${R.A.n} days: ${o.pv})` : ''))],
       ['Time of day', R.tod],
       ['Notes insights', R.ins ? ['x'] : [], R.ins ? `<div class="ts-meta">${esc(insMeta)}</div>${mdLite(R.ins.text)}` : null],
     ].filter(sec => sec[1].length);
@@ -1469,10 +1475,9 @@
     const setOpen = (open) => {
       $('patternsBody').hidden = !open;
       $('patternsToggle').setAttribute('aria-expanded', String(open));
-      try { localStorage.setItem(PAT_OPEN_KEY, open ? '1' : '0'); } catch (e) {}
       if (open) renderPatterns();
     };
-    setOpen(lsGet(PAT_OPEN_KEY) === '1');
+    setOpen(false); // always starts closed
     $('patternsToggle').addEventListener('click', () => setOpen($('patternsBody').hidden));
     $('assessRange').addEventListener('change', () => {
       try { localStorage.setItem(PAT_RANGE_KEY, $('assessRange').value); } catch (e) {}
